@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../models/peer_connection.dart';
 import '../services/webrtc_service.dart';
+import '../config.dart' as cfg;
 
 class ListenerScreen extends StatefulWidget {
   const ListenerScreen({super.key});
@@ -12,7 +13,7 @@ class ListenerScreen extends StatefulWidget {
 }
 
 class _ListenerScreenState extends State<ListenerScreen> {
-  static const signalingUrl = 'http://192.168.1.196:3000';
+  static const signalingUrl = cfg.signalingUrl; // legacy reference, use cfg.signalingUrl below
 
   final _codeCtrl = TextEditingController();
   WebRTCService? _rtc;
@@ -37,7 +38,7 @@ class _ListenerScreenState extends State<ListenerScreen> {
     final code = _codeCtrl.text.trim();
     if (code.length != 6) return;
     final rtc = WebRTCService(
-      signalingUrl: signalingUrl,
+      signalingUrl: cfg.signalingUrl,
       sessionCode: code,
       role: PeerRole.listener,
     );

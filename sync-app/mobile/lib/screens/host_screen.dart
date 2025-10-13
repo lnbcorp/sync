@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../models/peer_connection.dart';
 import '../services/webrtc_service.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import '../config.dart' as cfg;
 
 class HostScreen extends StatefulWidget {
   const HostScreen({super.key});
@@ -14,7 +15,6 @@ class HostScreen extends StatefulWidget {
 }
 
 class _HostScreenState extends State<HostScreen> {
-  static const signalingUrl = 'http://192.168.1.196:3000';
 
   String? _code;
   bool _starting = false;
@@ -24,7 +24,7 @@ class _HostScreenState extends State<HostScreen> {
   Future<void> _createSession() async {
     setState(() => _starting = true);
     try {
-      final res = await http.post(Uri.parse('$signalingUrl/api/session/create'));
+      final res = await http.post(Uri.parse('${cfg.signalingUrl}/api/session/create'));
       if (res.statusCode == 200) {
         final json = jsonDecode(res.body) as Map<String, dynamic>;
         final code = json['code'] as String;
@@ -45,7 +45,7 @@ class _HostScreenState extends State<HostScreen> {
       if (_code == null) return;
     }
     final rtc = WebRTCService(
-      signalingUrl: signalingUrl,
+      signalingUrl: cfg.signalingUrl,
       sessionCode: _code!,
       role: PeerRole.host,
     );
@@ -62,7 +62,7 @@ class _HostScreenState extends State<HostScreen> {
       if (_code == null) return;
     }
     final rtc = WebRTCService(
-      signalingUrl: signalingUrl,
+      signalingUrl: cfg.signalingUrl,
       sessionCode: _code!,
       role: PeerRole.host,
     );

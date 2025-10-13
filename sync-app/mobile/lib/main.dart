@@ -7,6 +7,7 @@ import 'utils/opus_encoder.dart';
 import 'services/webrtc_service.dart';
 import 'models/peer_connection.dart';
 import 'screens/home_screen.dart';
+import 'config.dart' as cfg;
 
 void main() {
   runApp(const MyApp());
@@ -187,7 +188,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     final code = _codeCtrl.text.trim();
     if (code.length != 6) return;
     final rtc = WebRTCService(
-      signalingUrl: 'http://192.168.1.196:3000',
+      signalingUrl: cfg.signalingUrl,
       sessionCode: code,
       role: _role,
     );
