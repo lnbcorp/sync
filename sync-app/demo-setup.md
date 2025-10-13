@@ -1,4 +1,4 @@
-# sync Demo Setup Guide (Web UI + Optional Signaling)
+# Demo Setup Guide (Web UI + Optional Signaling)
 
 This guide explains, in simple steps, how anyone can clone, set up, and run the demo UI in a browser, and how to configure values (e.g., signaling server URL) so remote users can connect.
 
