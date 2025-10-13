@@ -1,0 +1,89 @@
+openapi: 3.0.3
+info:
+  title: sync Signaling API
+  version: 0.1.0
+servers:
+  - url: http://localhost:3000
+paths:
+  /api/session/create:
+    post:
+      summary: Create a session code
+      requestBody:
+        required: false
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    example: "123456"
+  /api/session/join:
+    post:
+      summary: Join a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+      responses:
+        '200':
+          description: Joined
+  /api/session/leave:
+    post:
+      summary: Leave a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+      responses:
+        '200':
+          description: Left
+components:
+  schemas: {}
+x-sockets:
+  events:
+    - name: join
+      payload:
+        type: object
+        properties:
+          code:
+            type: string
+    - name: offer
+      payload:
+        type: object
+        properties:
+          code:
+            type: string
+          sdp:
+            type: object
+    - name: answer
+      payload:
+        type: object
+        properties:
+          code:
+            type: string
+          sdp:
+            type: object
+    - name: ice-candidate
+      payload:
+        type: object
+        properties:
+          code:
+            type: string
+          candidate:
+            type: object

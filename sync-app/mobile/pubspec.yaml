@@ -1,0 +1,21 @@
+name: sync_mobile
+publish_to: 'none'
+description: Flutter client for sync audio streaming
+version: 0.0.1+1
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+  flutter: '>=3.24.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  permission_handler: ^11.3.1
+  flutter_webrtc: ^1.2.0
+  socket_io_client: ^3.1.2
+  http: ^1.2.2
+  qr_flutter: ^4.1.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+flutter:
+  uses-material-design: true
+  assets: []

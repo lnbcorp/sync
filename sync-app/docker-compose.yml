@@ -1,0 +1,31 @@
+version: '3.9'
+services:
+  backend:
+    build: ./backend
+    command: pnpm dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - REDIS_URL=redis://redis:6379
+      - POSTGRES_URL=postgres://postgres:postgres@postgres:5432/sync
+      - CORS_ORIGIN=*
+    volumes:
+      - ./backend:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      - redis
+      - postgres
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=sync
+    ports:
+      - "5432:5432"
