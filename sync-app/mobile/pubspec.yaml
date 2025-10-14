@@ -18,4 +18,6 @@ dev_dependencies:
     sdk: flutter
 flutter:
   uses-material-design: true
-  assets: []
+  assets:
+    - assets/branding/logo-dark.png
+    - assets/branding/logo-light.png

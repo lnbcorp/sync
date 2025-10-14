@@ -23,6 +23,14 @@ export function initSignaling(httpServer, { redis, corsOrigin = '*' }) {
       io.to(code).emit('participant-joined', { id: socket.id });
       // Ask existing peers (e.g., host) to send an offer specifically to this newly joined socket
       socket.to(code).emit('request-offer', { to: socket.id, code });
+      // Emit current room size to everyone
+      const size = io.sockets.adapter.rooms.get(code)?.size || 0;
+      io.to(code).emit('room-size', { size });
+      // If a source was already set for this room, send it to the newly joined socket
+      const src = await redis.get(`session:${code}:source`);
+      if (src) {
+        socket.emit('source-update', { source: src, from: 'server' });
+      }
     });
 
     socket.on('offer', ({ code, sdp, to }) => {
@@ -52,8 +60,24 @@ export function initSignaling(httpServer, { redis, corsOrigin = '*' }) {
       }
     });
 
+    // latency measurement
+    socket.on('ping', ({ ts, code }) => {
+      socket.emit('pong', { ts, code });
+    });
+
+    // source label update (e.g., YouTube/Netflix/Spotify)
+    socket.on('source-update', async ({ code, source }) => {
+      if (!code || typeof source !== 'string') return;
+      await redis.set(`session:${code}:source`, source);
+      io.to(code).emit('source-update', { source, from: socket.id });
+    });
+
     socket.on('disconnect', () => {
       if (joinedCode) io.to(joinedCode).emit('participant-left', { id: socket.id });
+      if (joinedCode) {
+        const size = io.sockets.adapter.rooms.get(joinedCode)?.size || 0;
+        io.to(joinedCode).emit('room-size', { size });
+      }
     });
   });
 

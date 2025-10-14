@@ -21,6 +21,12 @@ class _ListenerScreenState extends State<ListenerScreen> {
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
   bool _rendererReady = false;
   StreamSubscription<MediaStream>? _remoteSub;
+  int? _roomSize;
+  int? _latencyMs;
+  StreamSubscription<int>? _roomSub;
+  StreamSubscription<int>? _latSub;
+  String? _source;
+  StreamSubscription<String>? _sourceSub;
 
   @override
   void initState() {
@@ -49,6 +55,12 @@ class _ListenerScreenState extends State<ListenerScreen> {
       _remoteRenderer.srcObject = stream; // attach remote audio/video
       setState(() {});
     });
+    _roomSub?.cancel();
+    _latSub?.cancel();
+    _roomSub = rtc.roomSizeStream.listen((v) => setState(() => _roomSize = v));
+    _latSub = rtc.latencyMsStream.listen((v) => setState(() => _latencyMs = v));
+    _sourceSub?.cancel();
+    _sourceSub = rtc.sourceStream.listen((v) => setState(() => _source = v));
     setState(() => _rtc = rtc);
   }
 
@@ -66,6 +78,9 @@ class _ListenerScreenState extends State<ListenerScreen> {
   void dispose() {
     _remoteRenderer.dispose();
     _remoteSub?.cancel();
+    _roomSub?.cancel();
+    _latSub?.cancel();
+    _sourceSub?.cancel();
     _rtc?.dispose();
     super.dispose();
   }
@@ -102,7 +117,17 @@ class _ListenerScreenState extends State<ListenerScreen> {
               ],
             ),
             const SizedBox(height: 24),
-            Text('Connection: ${_pcState?.name ?? 'idle'}'),
+            Row(
+              children: [
+                _StatChip(label: 'Connection', value: _pcState?.name ?? 'idle'),
+                const SizedBox(width: 12),
+                _StatChip(label: 'Party', value: (_roomSize ?? (_rtc != null ? 2 : 0)).toString()),
+                const SizedBox(width: 12),
+                _StatChip(label: 'Latency', value: _latencyMs != null ? '${_latencyMs}ms' : '…'),
+                const SizedBox(width: 12),
+                _StatChip(label: 'Source', value: _source ?? '—'),
+              ],
+            ),
             const SizedBox(height: 12),
             if (_rendererReady)
               // For audio-only streams, this still enables playback on web/desktop/mobile
@@ -119,6 +144,27 @@ class _ListenerScreenState extends State<ListenerScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  final String label;
+  final String value;
+  const _StatChip({required this.label, required this.value});
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Chip(
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('$label: ', style: TextStyle(color: cs.onSurfaceVariant)),
+          Text(value, style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface)),
+        ],
+      ),
+      backgroundColor: Theme.of(context).cardColor,
+      side: BorderSide(color: cs.primary.withOpacity(0.25)),
     );
   }
 }

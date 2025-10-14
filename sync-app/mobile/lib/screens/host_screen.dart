@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -20,6 +21,12 @@ class _HostScreenState extends State<HostScreen> {
   bool _starting = false;
   WebRTCService? _rtc;
   RTCPeerConnectionState? _pcState;
+  int? _roomSize;
+  int? _latencyMs;
+  StreamSubscription<int>? _roomSub;
+  StreamSubscription<int>? _latSub;
+  String? _source;
+  StreamSubscription<String>? _sourceSub;
 
   Future<void> _createSession() async {
     setState(() => _starting = true);
@@ -52,6 +59,12 @@ class _HostScreenState extends State<HostScreen> {
     await rtc.init();
     await rtc.createAndAttachMicStream();
     rtc.connectionStateStream.listen((s) => setState(() => _pcState = s));
+    _roomSub?.cancel();
+    _latSub?.cancel();
+    _sourceSub?.cancel();
+    _roomSub = rtc.roomSizeStream.listen((v) => setState(() => _roomSize = v));
+    _latSub = rtc.latencyMsStream.listen((v) => setState(() => _latencyMs = v));
+    _sourceSub = rtc.sourceStream.listen((v) => setState(() => _source = v));
     setState(() => _rtc = rtc);
   }
 
@@ -70,6 +83,12 @@ class _HostScreenState extends State<HostScreen> {
     final s = await rtc.createAndAttachTabAudioStreamWeb();
     if (s == null) return; // user canceled picker
     rtc.connectionStateStream.listen((s) => setState(() => _pcState = s));
+    _roomSub?.cancel();
+    _latSub?.cancel();
+    _sourceSub?.cancel();
+    _roomSub = rtc.roomSizeStream.listen((v) => setState(() => _roomSize = v));
+    _latSub = rtc.latencyMsStream.listen((v) => setState(() => _latencyMs = v));
+    _sourceSub = rtc.sourceStream.listen((v) => setState(() => _source = v));
     setState(() => _rtc = rtc);
   }
 
@@ -78,6 +97,7 @@ class _HostScreenState extends State<HostScreen> {
     setState(() {
       _rtc = null;
       _pcState = null;
+      _source = null;
     });
   }
 
@@ -87,6 +107,9 @@ class _HostScreenState extends State<HostScreen> {
 
   @override
   void dispose() {
+    _roomSub?.cancel();
+    _latSub?.cancel();
+    _sourceSub?.cancel();
     _rtc?.dispose();
     super.dispose();
   }
@@ -94,7 +117,17 @@ class _HostScreenState extends State<HostScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Host')),
+      appBar: AppBar(
+        title: SizedBox(
+          height: 28,
+          child: Image.asset(
+            Theme.of(context).brightness == Brightness.dark
+                ? 'assets/branding/logo-dark.png'
+                : 'assets/branding/logo-light.png',
+            fit: BoxFit.contain,
+          ),
+        ),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -108,28 +141,17 @@ class _HostScreenState extends State<HostScreen> {
             ] else ...[
               const Text('Tap "Start" to create a session code')
             ],
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _rtc == null && !_starting ? _startBroadcast : null,
-                    child: _starting ? const Text('Starting...') : const Text('Start'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _rtc != null ? _stopBroadcast : null,
-                    child: const Text('Stop'),
-                  ),
-                ),
-              ],
-            ),
-            if (kIsWeb) ...[
-              const SizedBox(height: 12),
+            if (_rtc == null) ...[
               Row(
                 children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _rtc == null && !_starting ? _startBroadcast : null,
+                      icon: const Icon(Icons.mic),
+                      label: const Text('Start with Mic'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: _rtc == null && !_starting ? _startBroadcastWithTabAudioWeb : null,
@@ -139,15 +161,78 @@ class _HostScreenState extends State<HostScreen> {
                   ),
                 ],
               ),
+            ] else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: !_starting ? () => _rtc?.switchToMic() : null,
+                      icon: const Icon(Icons.mic),
+                      label: const Text('Switch to Mic'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: (!_starting && kIsWeb) ? () => _rtc?.switchToTabAudioWeb() : null,
+                      icon: const Icon(Icons.tab),
+                      label: const Text('Switch to Tab Audio'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _rtc != null ? _stopBroadcast : null,
+                      child: const Text('Stop'),
+                    ),
+                  ),
+                ],
+              ),
             ],
             const SizedBox(height: 24),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text('Connection: ${_pcState?.name ?? 'idle'}'),
-            )
+            Row(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: [
+                _StatChip(label: 'Connection', value: _pcState?.name ?? 'idle'),
+                const SizedBox(width: 12),
+                _StatChip(label: 'Party', value: (_roomSize ?? 1).toString()),
+                const SizedBox(width: 12),
+                _StatChip(label: 'Latency', value: _latencyMs != null ? '${_latencyMs}ms' : '…'),
+                const SizedBox(width: 12),
+                _StatChip(label: 'Source', value: _source ?? '—'),
+              ],
+            ),
+            const SizedBox(height: 8),
           ],
         ),
       ),
+    );
+  }
+
+  
+}
+
+class _StatChip extends StatelessWidget {
+  final String label;
+  final String value;
+  const _StatChip({required this.label, required this.value});
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Chip(
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('$label: ', style: TextStyle(color: cs.onSurfaceVariant)),
+          Text(value, style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface)),
+        ],
+      ),
+      backgroundColor: Theme.of(context).cardColor,
+      side: BorderSide(color: cs.primary.withOpacity(0.25)),
     );
   }
 }

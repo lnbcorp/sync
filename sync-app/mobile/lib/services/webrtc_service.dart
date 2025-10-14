@@ -11,18 +11,29 @@ class WebRTCService {
   final PeerConnectionConfig config;
 
   IO.Socket? _socket;
+  // Single PC for listener role
   RTCPeerConnection? _pc;
+  // Multiple PCs for host role (keyed by remote socket id)
+  final Map<String, RTCPeerConnection> _hostPcs = {};
   MediaStream? _localStream;
   MediaStream? _remoteStream;
-  String? _remoteSocketId;
 
   final _connectionStateCtrl = StreamController<RTCPeerConnectionState>.broadcast();
   final _iceConnectionStateCtrl = StreamController<RTCIceConnectionState>.broadcast();
   final _remoteStreamCtrl = StreamController<MediaStream>.broadcast();
+  final _roomSizeCtrl = StreamController<int>.broadcast();
+  final _latencyMsCtrl = StreamController<int>.broadcast();
+  final _sourceCtrl = StreamController<String>.broadcast();
+  Timer? _pingTimer;
+  String? _currentSource;
+  Timer? _sourcePollTimer;
 
   Stream<RTCPeerConnectionState> get connectionStateStream => _connectionStateCtrl.stream;
   Stream<RTCIceConnectionState> get iceConnectionStateStream => _iceConnectionStateCtrl.stream;
   Stream<MediaStream> get remoteStreamStream => _remoteStreamCtrl.stream;
+  Stream<int> get roomSizeStream => _roomSizeCtrl.stream;
+  Stream<int> get latencyMsStream => _latencyMsCtrl.stream;
+  Stream<String> get sourceStream => _sourceCtrl.stream;
 
   WebRTCService({
     required this.signalingUrl,
@@ -37,16 +48,49 @@ class WebRTCService {
       _socket!.emit('join', { 'code': sessionCode });
     });
 
+    _socket!.on('room-size', (data) {
+      final map = Map<String, dynamic>.from(data as Map);
+      final size = (map['size'] ?? 0) as int;
+      _roomSizeCtrl.add(size);
+    });
+    _socket!.on('participant-joined', (_) {
+      _requestRoomSize();
+      if (role == PeerRole.host && _currentSource != null) {
+        // Re-broadcast current source so late joiners see it
+        _socket?.emit('source-update', { 'code': sessionCode, 'source': _currentSource });
+      }
+    });
+    _socket!.on('participant-left', (_) => _requestRoomSize());
+
+    // latency: listen for pong and compute rtt
+    _socket!.on('pong', (data) {
+      final map = Map<String, dynamic>.from(data as Map);
+      final sent = (map['ts'] as num?)?.toInt();
+      if (sent != null) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final rtt = now - sent;
+        _latencyMsCtrl.add(rtt);
+      }
+    });
+
+    _socket!.on('source-update', (data) {
+      final map = Map<String, dynamic>.from(data as Map);
+      final src = map['source'];
+      if (src is String) {
+        _sourceCtrl.add(src);
+      }
+    });
+
     _socket!.on('offer', (data) async {
       if (role == PeerRole.listener) {
         await _ensurePeerConnection();
         final sdpMap = Map<String, dynamic>.from(data as Map);
         final sdp = sdpMap['sdp'];
-        _remoteSocketId = sdpMap['from'] as String?; // remember who sent the offer
         await _pc!.setRemoteDescription(RTCSessionDescription(sdp['sdp'], sdp['type']));
         final answer = await _pc!.createAnswer();
         await _pc!.setLocalDescription(answer);
-        _socket!.emit('answer', { 'code': sessionCode, 'sdp': answer.toMap(), 'to': _remoteSocketId });
+        final to = sdpMap['from'];
+        _socket!.emit('answer', { 'code': sessionCode, 'sdp': answer.toMap(), 'to': to });
       }
     });
 
@@ -54,7 +98,10 @@ class WebRTCService {
       if (role == PeerRole.host) {
         final sdpMap = Map<String, dynamic>.from(data as Map);
         final sdp = sdpMap['sdp'];
-        await _pc!.setRemoteDescription(RTCSessionDescription(sdp['sdp'], sdp['type']));
+        final from = sdpMap['from'] as String?;
+        if (from != null && _hostPcs.containsKey(from)) {
+          await _hostPcs[from]!.setRemoteDescription(RTCSessionDescription(sdp['sdp'], sdp['type']));
+        }
       }
     });
 
@@ -62,7 +109,14 @@ class WebRTCService {
       final map = Map<String, dynamic>.from(data as Map);
       final c = map['candidate'];
       final cand = RTCIceCandidate(c['candidate'], c['sdpMid'], c['sdpMLineIndex']);
-      await _pc?.addCandidate(cand);
+      if (role == PeerRole.host) {
+        final from = map['from'] as String?;
+        if (from != null && _hostPcs.containsKey(from)) {
+          await _hostPcs[from]!.addCandidate(cand);
+        }
+      } else {
+        await _pc?.addCandidate(cand);
+      }
     });
 
     _socket!.on('request-offer', (data) async {
@@ -70,33 +124,38 @@ class WebRTCService {
       final map = Map<String, dynamic>.from(data as Map);
       final to = map['to'];
       if (to == null) return;
-      _remoteSocketId = to; // route subsequent ICE to this peer
-      await _ensurePeerConnection();
-      // Create a fresh offer targeting the new peer
-      final offer = await _pc!.createOffer({
+      final pc = await _ensureHostPeerConnection(to);
+      final offer = await pc.createOffer({
         'offerToReceiveAudio': 1,
         'offerToReceiveVideo': 0,
       });
-      await _pc!.setLocalDescription(offer);
+      await pc.setLocalDescription(offer);
       _socket!.emit('offer', { 'code': sessionCode, 'sdp': offer.toMap(), 'to': to });
     });
 
     // Host will create and send offer after attaching local stream.
+
+    // Start latency probe
+    _startPing();
+  }
+
+  void updateSource(String source) {
+    _socket?.emit('source-update', { 'code': sessionCode, 'source': source });
+    _sourceCtrl.add(source);
+    _currentSource = source;
   }
 
   Future<void> attachLocalStream(MediaStream stream) async {
     _localStream = stream;
-    await _ensurePeerConnection();
-    for (var track in stream.getTracks()) {
-      await _pc!.addTrack(track, stream);
+    if (role == PeerRole.listener) {
+      await _ensurePeerConnection();
+      for (var track in stream.getTracks()) {
+        await _pc!.addTrack(track, stream);
+      }
+      // listener does not create offers
     }
     if (role == PeerRole.host) {
-      final offer = await _pc!.createOffer({
-        'offerToReceiveAudio': 1,
-        'offerToReceiveVideo': 0,
-      });
-      await _pc!.setLocalDescription(offer);
-      _socket?.emit('offer', { 'code': sessionCode, 'sdp': offer.toMap() });
+      _startSourcePolling();
     }
   }
 
@@ -106,7 +165,12 @@ class WebRTCService {
       'video': false,
     };
     final stream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
-    await attachLocalStream(stream);
+    if (role == PeerRole.host) {
+      await _setHostAudioStream(stream);
+      updateSource('Microphone');
+    } else {
+      await attachLocalStream(stream);
+    }
     return stream;
   }
 
@@ -117,13 +181,39 @@ class WebRTCService {
       'video': true, // request video to ensure tab-audio is permitted, we'll drop it below
     };
     final stream = await navigator.mediaDevices.getDisplayMedia(constraints);
+    final labels = <String>[];
+    for (final t in stream.getAudioTracks()) {
+      final lbl = t.label;
+      if (lbl != null && lbl.isNotEmpty) labels.add(lbl);
+    }
+    for (final t in stream.getVideoTracks()) {
+      final lbl = t.label;
+      if (lbl != null && lbl.isNotEmpty) labels.add(lbl);
+    }
     // Ensure only audio tracks are added
     for (final t in List<MediaStreamTrack>.from(stream.getVideoTracks())) {
       await t.stop();
       stream.removeTrack(t);
     }
-    await attachLocalStream(stream);
+    if (role == PeerRole.host) {
+      await _setHostAudioStream(stream);
+      final inferred = _inferSourceFromLabels(labels) ?? _extractDomainFromLabels(labels) ?? 'Shared Tab';
+      updateSource(inferred);
+    } else {
+      await attachLocalStream(stream);
+    }
     return stream;
+  }
+
+  // Public helpers to switch without renegotiation
+  Future<void> switchToMic() async {
+    if (role != PeerRole.host) return;
+    await createAndAttachMicStream();
+  }
+
+  Future<void> switchToTabAudioWeb() async {
+    if (role != PeerRole.host) return;
+    await createAndAttachTabAudioStreamWeb();
   }
 
   Future<void> _ensurePeerConnection() async {
@@ -159,11 +249,8 @@ class WebRTCService {
     _pc!.onIceCandidate = (candidate) {
       if (candidate.candidate != null) {
         final payload = { 'code': sessionCode, 'candidate': candidate.toMap() };
-        if (_remoteSocketId != null) {
-          payload['to'] = _remoteSocketId;
-        }
         // ignore: avoid_print
-        print('[WebRTC] emit ice-candidate to=${payload['to'] ?? 'room'}');
+        print('[WebRTC] emit ice-candidate (listener)');
         _socket?.emit('ice-candidate', payload);
       }
     };
@@ -181,14 +268,144 @@ class WebRTCService {
     };
   }
 
+  Future<RTCPeerConnection> _ensureHostPeerConnection(String toSocketId) async {
+    if (_hostPcs.containsKey(toSocketId)) return _hostPcs[toSocketId]!;
+    final Map<String, dynamic> iceConfiguration = {
+      'iceServers': config.iceServers,
+      'sdpSemantics': 'unified-plan',
+      'bundlePolicy': 'max-bundle',
+    };
+    final pc = await createPeerConnection(iceConfiguration);
+    // Attach local tracks
+    if (_localStream != null) {
+      for (var track in _localStream!.getTracks()) {
+        await pc.addTrack(track, _localStream!);
+      }
+    }
+    // Send-only from host; listeners will RecvOnly
+    pc.onIceCandidate = (candidate) {
+      if (candidate.candidate != null) {
+        final payload = { 'code': sessionCode, 'candidate': candidate.toMap(), 'to': toSocketId };
+        // ignore: avoid_print
+        print('[WebRTC] emit ice-candidate to=$toSocketId');
+        _socket?.emit('ice-candidate', payload);
+      }
+    };
+    pc.onConnectionState = (state) {
+      // ignore: avoid_print
+      print('[WebRTC] (host->$toSocketId) connectionState=${state.name}');
+      _connectionStateCtrl.add(state);
+    };
+    _hostPcs[toSocketId] = pc;
+    return pc;
+  }
+
+  Future<void> _setHostAudioStream(MediaStream newStream) async {
+    // Keep reference to old to clean up
+    final oldStream = _localStream;
+    _localStream = newStream;
+    final audioTracks = newStream.getAudioTracks();
+    if (audioTracks.isEmpty) return;
+    final newTrack = audioTracks.first;
+    // Replace on all existing host peer connections
+    for (final pc in _hostPcs.values) {
+      final senders = await pc.getSenders();
+      RTCRtpSender? audioSender;
+      for (final s in senders) {
+        if (s.track != null && s.track!.kind == 'audio') {
+          audioSender = s;
+          break;
+        }
+      }
+      audioSender ??= senders.isNotEmpty ? senders.first : null;
+      if (audioSender != null && audioSender.track != null) {
+        await audioSender.replaceTrack(newTrack);
+      } else {
+        await pc.addTrack(newTrack, newStream);
+      }
+    }
+    // Clean up old stream
+    if (oldStream != null && oldStream.id != newStream.id) {
+      for (final t in oldStream.getTracks()) {
+        await t.stop();
+      }
+      await oldStream.dispose();
+    }
+    // Ensure source polling runs (for tab to tab changes)
+    if (role == PeerRole.host) {
+      _startSourcePolling();
+    }
+  }
+
+  void _startPing() {
+    _pingTimer?.cancel();
+    _pingTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      _socket?.emit('ping', { 'ts': ts, 'code': sessionCode });
+    });
+  }
+
+  void _requestRoomSize() {
+    // When participant events happen, server also emits room-size. This is a no-op placeholder in case we add an API later.
+  }
+
+  String? _inferSourceFromLabels(List<String> labels) {
+    final text = labels.join(' ').toLowerCase();
+    if (text.contains('youtube')) return 'YouTube';
+    if (text.contains('spotify')) return 'Spotify';
+    if (text.contains('netflix')) return 'Netflix';
+    if (text.contains('prime') || text.contains('amazon')) return 'Amazon Prime';
+    if (text.contains('steam')) return 'Steam';
+    if (text.contains('twitch')) return 'Twitch';
+    if (text.contains('hulu')) return 'Hulu';
+    if (text.contains('hotstar') || text.contains('disney')) return 'Disney+ Hotstar';
+    return null;
+  }
+
+  String? _extractDomainFromLabels(List<String> labels) {
+    final text = labels.join(' ');
+    final regex = RegExp(r"[A-Za-z0-9.-]+\.[A-Za-z]{2,}");
+    final m = regex.firstMatch(text);
+    return m?.group(0);
+  }
+
   Future<void> dispose() async {
     _socket?.dispose();
+    // listener PC
     await _pc?.close();
     await _pc?.dispose();
+    // host PCs
+    for (final pc in _hostPcs.values) {
+      await pc.close();
+      await pc.dispose();
+    }
+    _hostPcs.clear();
     await _localStream?.dispose();
     await _remoteStream?.dispose();
     await _connectionStateCtrl.close();
     await _iceConnectionStateCtrl.close();
     await _remoteStreamCtrl.close();
+    await _roomSizeCtrl.close();
+    await _latencyMsCtrl.close();
+    await _sourceCtrl.close();
+    _pingTimer?.cancel();
+    _sourcePollTimer?.cancel();
+  }
+
+  void _startSourcePolling() {
+    _sourcePollTimer?.cancel();
+    _sourcePollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (_localStream == null) return;
+      final labels = <String>[];
+      for (final t in _localStream!.getTracks()) {
+        final lbl = t.label;
+        if (lbl != null && lbl.isNotEmpty) labels.add(lbl);
+      }
+      if (labels.isEmpty) return;
+      final inferred = _inferSourceFromLabels(labels) ?? _extractDomainFromLabels(labels);
+      if (inferred != null && inferred != _currentSource) {
+        updateSource(inferred);
+      }
+    });
   }
 }

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'services/audio_capture_service.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'utils/opus_encoder.dart';
 import 'services/webrtc_service.dart';
 import 'models/peer_connection.dart';
@@ -13,15 +14,89 @@ void main() {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class ThemeController extends ChangeNotifier {
+  ThemeMode _mode = ThemeMode.dark;
+  ThemeMode get mode => _mode;
+  void toggle() {
+    _mode = _mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    notifyListeners();
+  }
+}
+
+class ThemeProvider extends InheritedNotifier<ThemeController> {
+  const ThemeProvider({super.key, required ThemeController controller, required Widget child})
+      : super(notifier: controller, child: child);
+  static ThemeController of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ThemeProvider>()!.notifier!;
+}
+
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final _theme = ThemeController();
+
+  ThemeData _lightTheme() {
+    const seed = Color(0xFF0D47A1); // deep blue
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: seed,
+        brightness: Brightness.light,
+      ).copyWith(background: Colors.white, surface: Colors.white, primaryContainer: Colors.blue.shade50),
+      scaffoldBackgroundColor: Colors.white, // exact match to light logo bg
+      appBarTheme: const AppBarTheme(backgroundColor: Colors.white, foregroundColor: Colors.black),
+      cardColor: Colors.grey.shade100,
+    );
+  }
+
+  ThemeData _darkTheme() {
+    const seed = Color(0xFF1565C0); // blue
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: seed,
+        brightness: Brightness.dark,
+      ).copyWith(background: Colors.black, surface: const Color(0xFF0A0A0A)),
+      scaffoldBackgroundColor: Colors.black, // exact match to dark logo bg
+      appBarTheme: const AppBarTheme(backgroundColor: Colors.black, foregroundColor: Colors.white),
+      cardColor: const Color(0xFF121212),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'sync',
-      theme: ThemeData.dark(useMaterial3: true),
-      home: const HomeScreen(),
+    return ThemeProvider(
+      controller: _theme,
+      child: AnimatedBuilder(
+        animation: _theme,
+        builder: (context, _) {
+          return MaterialApp(
+            title: 'sync',
+            theme: _lightTheme(),
+            darkTheme: _darkTheme(),
+            themeMode: _theme.mode,
+            debugShowCheckedModeBanner: false,
+            builder: (context, child) {
+              if (!kDebugMode || child == null) return child ?? const SizedBox.shrink();
+              return Stack(
+                children: [
+                  child,
+                  const Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Banner(message: 'DEBUG', location: BannerLocation.bottomEnd),
+                  ),
+                ],
+              );
+            },
+            home: const HomeScreen(),
+          );
+        },
+      ),
     );
   }
 }
