@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import '../models/peer_connection.dart';
 
@@ -24,9 +26,14 @@ class WebRTCService {
   final _roomSizeCtrl = StreamController<int>.broadcast();
   final _latencyMsCtrl = StreamController<int>.broadcast();
   final _sourceCtrl = StreamController<String>.broadcast();
+  final _switchSuggestCtrl = StreamController<String>.broadcast();
   Timer? _pingTimer;
   String? _currentSource;
   Timer? _sourcePollTimer;
+  Timer? _activePageTimer;
+  DateTime? _lastSwitchSuggestAt;
+
+  HostInputType? _currentInput;
 
   Stream<RTCPeerConnectionState> get connectionStateStream => _connectionStateCtrl.stream;
   Stream<RTCIceConnectionState> get iceConnectionStateStream => _iceConnectionStateCtrl.stream;
@@ -34,6 +41,7 @@ class WebRTCService {
   Stream<int> get roomSizeStream => _roomSizeCtrl.stream;
   Stream<int> get latencyMsStream => _latencyMsCtrl.stream;
   Stream<String> get sourceStream => _sourceCtrl.stream;
+  Stream<String> get switchSuggestionStream => _switchSuggestCtrl.stream;
 
   WebRTCService({
     required this.signalingUrl,
@@ -137,6 +145,9 @@ class WebRTCService {
 
     // Start latency probe
     _startPing();
+
+    // Start active page polling (web-only)
+    if (kIsWeb) _startActivePagePolling();
   }
 
   void updateSource(String source) {
@@ -161,13 +172,18 @@ class WebRTCService {
 
   Future<MediaStream> createAndAttachMicStream() async {
     final mediaConstraints = {
-      'audio': true,
+      'audio': {
+        'echoCancellation': true,
+        'noiseSuppression': true,
+        'autoGainControl': true,
+      },
       'video': false,
     };
     final stream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
     if (role == PeerRole.host) {
       await _setHostAudioStream(stream);
       updateSource('Microphone');
+      _currentInput = HostInputType.mic;
     } else {
       await attachLocalStream(stream);
     }
@@ -186,6 +202,14 @@ class WebRTCService {
       final lbl = t.label;
       if (lbl != null && lbl.isNotEmpty) labels.add(lbl);
     }
+    // If no audio tracks were granted, abort and let caller inform the user
+    if (stream.getAudioTracks().isEmpty) {
+      for (final t in stream.getTracks()) {
+        try { await t.stop(); } catch (_) {}
+      }
+      try { await stream.dispose(); } catch (_) {}
+      return null;
+    }
     for (final t in stream.getVideoTracks()) {
       final lbl = t.label;
       if (lbl != null && lbl.isNotEmpty) labels.add(lbl);
@@ -199,6 +223,7 @@ class WebRTCService {
       await _setHostAudioStream(stream);
       final inferred = _inferSourceFromLabels(labels) ?? _extractDomainFromLabels(labels) ?? 'Shared Tab';
       updateSource(inferred);
+      _currentInput = HostInputType.tab;
     } else {
       await attachLocalStream(stream);
     }
@@ -211,9 +236,10 @@ class WebRTCService {
     await createAndAttachMicStream();
   }
 
-  Future<void> switchToTabAudioWeb() async {
-    if (role != PeerRole.host) return;
-    await createAndAttachTabAudioStreamWeb();
+  Future<bool> switchToTabAudioWeb() async {
+    if (role != PeerRole.host) return false;
+    final s = await createAndAttachTabAudioStreamWeb();
+    return s != null;
   }
 
   Future<void> _ensurePeerConnection() async {
@@ -304,6 +330,12 @@ class WebRTCService {
   Future<void> _setHostAudioStream(MediaStream newStream) async {
     // Keep reference to old to clean up
     final oldStream = _localStream;
+    // Immediately disable old audio tracks (e.g., mic) to avoid any transient mixing/echo
+    if (oldStream != null) {
+      for (final t in oldStream.getAudioTracks()) {
+        try { t.enabled = false; } catch (_) {}
+      }
+    }
     _localStream = newStream;
     final audioTracks = newStream.getAudioTracks();
     if (audioTracks.isEmpty) return;
@@ -390,8 +422,10 @@ class WebRTCService {
     await _roomSizeCtrl.close();
     await _latencyMsCtrl.close();
     await _sourceCtrl.close();
+    await _switchSuggestCtrl.close();
     _pingTimer?.cancel();
     _sourcePollTimer?.cancel();
+    _activePageTimer?.cancel();
   }
 
   void _startSourcePolling() {
@@ -410,4 +444,22 @@ class WebRTCService {
       }
     });
   }
+
+  void _startActivePagePolling() {
+    _activePageTimer?.cancel();
+    _activePageTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!kIsWeb) return;
+      if (role != PeerRole.host) return;
+      if (_currentInput != HostInputType.tab) return; // only suggest when currently tab sharing is in effect
+      final bool isHidden = html.document.hidden ?? false; // our app tab is not active
+      if (!isHidden) return;
+      // throttle suggestions to avoid spam
+      final now = DateTime.now();
+      if (_lastSwitchSuggestAt != null && now.difference(_lastSwitchSuggestAt!).inSeconds < 15) return;
+      _lastSwitchSuggestAt = now;
+      _switchSuggestCtrl.add('another page or app');
+    });
+  }
 }
+
+enum HostInputType { mic, tab }

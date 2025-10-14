@@ -27,6 +27,7 @@ class _HostScreenState extends State<HostScreen> {
   StreamSubscription<int>? _latSub;
   String? _source;
   StreamSubscription<String>? _sourceSub;
+  StreamSubscription<String>? _switchSuggestSub;
 
   Future<void> _createSession() async {
     setState(() => _starting = true);
@@ -46,6 +47,24 @@ class _HostScreenState extends State<HostScreen> {
     }
   }
 
+  void _handleSwitchSuggestion(String hostname) async {
+    if (!mounted) return;
+    final res = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Switch audio source?'),
+        content: Text('Detected active page "$hostname". Do you want to share its audio instead?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not now')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Switch')),
+        ],
+      ),
+    );
+    if (res == true) {
+      await _rtc?.switchToTabAudioWeb();
+    }
+  }
+
   Future<void> _startBroadcast() async {
     if (_code == null) {
       await _createSession();
@@ -62,9 +81,11 @@ class _HostScreenState extends State<HostScreen> {
     _roomSub?.cancel();
     _latSub?.cancel();
     _sourceSub?.cancel();
+    _switchSuggestSub?.cancel();
     _roomSub = rtc.roomSizeStream.listen((v) => setState(() => _roomSize = v));
     _latSub = rtc.latencyMsStream.listen((v) => setState(() => _latencyMs = v));
     _sourceSub = rtc.sourceStream.listen((v) => setState(() => _source = v));
+    _switchSuggestSub = rtc.switchSuggestionStream.listen(_handleSwitchSuggestion);
     setState(() => _rtc = rtc);
   }
 
@@ -86,9 +107,11 @@ class _HostScreenState extends State<HostScreen> {
     _roomSub?.cancel();
     _latSub?.cancel();
     _sourceSub?.cancel();
+    _switchSuggestSub?.cancel();
     _roomSub = rtc.roomSizeStream.listen((v) => setState(() => _roomSize = v));
     _latSub = rtc.latencyMsStream.listen((v) => setState(() => _latencyMs = v));
     _sourceSub = rtc.sourceStream.listen((v) => setState(() => _source = v));
+    _switchSuggestSub = rtc.switchSuggestionStream.listen(_handleSwitchSuggestion);
     setState(() => _rtc = rtc);
   }
 
@@ -110,6 +133,7 @@ class _HostScreenState extends State<HostScreen> {
     _roomSub?.cancel();
     _latSub?.cancel();
     _sourceSub?.cancel();
+    _switchSuggestSub?.cancel();
     _rtc?.dispose();
     super.dispose();
   }
