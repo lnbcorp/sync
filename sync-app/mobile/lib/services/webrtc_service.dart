@@ -300,6 +300,7 @@ class WebRTCService {
     return pc;
   }
 
+
   Future<void> _setHostAudioStream(MediaStream newStream) async {
     // Keep reference to old to clean up
     final oldStream = _localStream;
@@ -368,6 +369,7 @@ class WebRTCService {
     final m = regex.firstMatch(text);
     return m?.group(0);
   }
+
 
   Future<void> dispose() async {
     _socket?.dispose();
