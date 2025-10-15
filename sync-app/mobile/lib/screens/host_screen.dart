@@ -170,17 +170,9 @@ class _HostScreenState extends State<HostScreen> {
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: _rtc == null && !_starting ? _startBroadcast : null,
-                      icon: const Icon(Icons.mic),
-                      label: const Text('Start with Mic'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
                       onPressed: _rtc == null && !_starting ? _startBroadcastWithTabAudioWeb : null,
                       icon: const Icon(Icons.tab),
-                      label: const Text('Start with Tab Audio (Web)'),
+                      label: const Text('Start (Share Screen/Tab Audio)'),
                     ),
                   ),
                 ],
@@ -190,17 +182,14 @@ class _HostScreenState extends State<HostScreen> {
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: !_starting ? () => _rtc?.switchToMic() : null,
-                      icon: const Icon(Icons.mic),
-                      label: const Text('Switch to Mic'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: (!_starting && kIsWeb) ? () => _rtc?.switchToTabAudioWeb() : null,
+                      onPressed: (!_starting && kIsWeb) ? () async {
+                        final ok = await _rtc?.switchToTabAudioWeb() ?? false;
+                        if (!ok) {
+                          _showSnack('No audio captured. Select Entire screen and enable Share system audio.');
+                        }
+                      } : null,
                       icon: const Icon(Icons.tab),
-                      label: const Text('Switch to Tab Audio'),
+                      label: const Text('Switch to Screen/Tab Audio'),
                     ),
                   ),
                 ],
