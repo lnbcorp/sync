@@ -269,7 +269,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     );
     await rtc.init();
     if (_role == PeerRole.host) {
-      await rtc.createAndAttachMicStream();
+      await rtc.switchToTabAudioWeb();
     }
     _rtc = rtc;
     _rtc!.connectionStateStream.listen((s) => setState(() => _pcState = s));

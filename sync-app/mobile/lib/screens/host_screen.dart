@@ -66,27 +66,8 @@ class _HostScreenState extends State<HostScreen> {
   }
 
   Future<void> _startBroadcast() async {
-    if (_code == null) {
-      await _createSession();
-      if (_code == null) return;
-    }
-    final rtc = WebRTCService(
-      signalingUrl: cfg.signalingUrl,
-      sessionCode: _code!,
-      role: PeerRole.host,
-    );
-    await rtc.init();
-    await rtc.createAndAttachMicStream();
-    rtc.connectionStateStream.listen((s) => setState(() => _pcState = s));
-    _roomSub?.cancel();
-    _latSub?.cancel();
-    _sourceSub?.cancel();
-    _switchSuggestSub?.cancel();
-    _roomSub = rtc.roomSizeStream.listen((v) => setState(() => _roomSize = v));
-    _latSub = rtc.latencyMsStream.listen((v) => setState(() => _latencyMs = v));
-    _sourceSub = rtc.sourceStream.listen((v) => setState(() => _source = v));
-    _switchSuggestSub = rtc.switchSuggestionStream.listen(_handleSwitchSuggestion);
-    setState(() => _rtc = rtc);
+    // Delegate to Screen/Tab audio start to avoid mic usage
+    await _startBroadcastWithTabAudioWeb();
   }
 
   Future<void> _startBroadcastWithTabAudioWeb() async {
