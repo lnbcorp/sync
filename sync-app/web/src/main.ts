@@ -28,7 +28,10 @@ class SyncApp {
 
   private async createSession() {
     try {
-      const response = await fetch('/api/session/create', {
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 
+        (import.meta.env.DEV ? 'http://localhost:3000' : 'https://your-backend-url.railway.app');
+      
+      const response = await fetch(`${backendUrl}/api/session/create`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -62,7 +65,10 @@ class SyncApp {
     }
 
     try {
-      const response = await fetch('/api/session/join', {
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 
+        (import.meta.env.DEV ? 'http://localhost:3000' : 'https://your-backend-url.railway.app');
+      
+      const response = await fetch(`${backendUrl}/api/session/join`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -88,7 +94,10 @@ class SyncApp {
   private connectToSocket() {
     if (!this.sessionCode) return;
 
-    this.socket = io({
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 
+      (import.meta.env.DEV ? 'http://localhost:3000' : 'https://your-backend-url.railway.app');
+
+    this.socket = io(backendUrl, {
       transports: ['websocket', 'polling']
     });
 
@@ -125,7 +134,10 @@ class SyncApp {
   private async leaveSession() {
     if (this.sessionCode) {
       try {
-        await fetch('/api/session/leave', {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 
+          (import.meta.env.DEV ? 'http://localhost:3000' : 'https://your-backend-url.railway.app');
+        
+        await fetch(`${backendUrl}/api/session/leave`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

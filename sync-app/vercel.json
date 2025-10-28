@@ -2,32 +2,17 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/index.js",
-      "use": "@vercel/node"
+      "src": "web/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
     }
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/socket.io/(.*)",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/",
-      "dest": "/web/dist/index.html"
-    },
-    {
       "src": "/(.*)",
       "dest": "/web/dist/$1"
     }
-  ],
-  "env": {
-    "NODE_ENV": "production",
-    "CORS_ORIGIN": "*",
-    "REDIS_URL": "memory",
-    "SESSION_TTL_SECONDS": "1800"
-  }
+  ]
 }
