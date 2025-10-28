@@ -1,25 +1,25 @@
 # Sync App - Complete Deployment Guide
 
 ## Architecture Overview
-- **Backend**: Node.js/Express (Railway) - WebRTC signaling server
+- **Backend**: Node.js/Express (Render) - WebRTC signaling server
 - **Frontend**: Web app (Vercel) - User interface
 - **Mobile**: Flutter app (Separate deployment) - Mobile clients
 
-## Step 1: Deploy Backend to Railway
+## Step 1: Deploy Backend to Render
 
-### 1.1 Create Railway Account
-1. Go to [railway.app](https://railway.app)
+### 1.1 Create Render Account
+1. Go to [render.com](https://render.com)
 2. Sign in with GitHub
 3. Connect your repository
 
 ### 1.2 Deploy Backend
-1. Click "New Project" → "Deploy from GitHub repo"
-2. Select your repository
+1. Click "New" → "Web Service"
+2. Connect your GitHub repository
 3. Choose the `sync-app/backend` directory
-4. Railway will auto-detect Node.js and deploy
+4. Render will auto-detect Node.js and deploy
 
 ### 1.3 Configure Environment Variables
-In Railway dashboard, add:
+In Render dashboard, add:
 ```
 NODE_ENV=production
 CORS_ORIGIN=*
@@ -29,9 +29,9 @@ PORT=3000
 ```
 
 ### 1.4 Get Backend URL
-After deployment, Railway provides a URL like:
+After deployment, Render provides a URL like:
 ```
-https://your-app-name.railway.app
+https://your-app-name.onrender.com
 ```
 
 ## Step 2: Deploy Frontend to Vercel
@@ -40,7 +40,7 @@ https://your-app-name.railway.app
 1. In Vercel dashboard, go to your project settings
 2. Add environment variable:
 ```
-VITE_BACKEND_URL=https://your-app-name.railway.app
+VITE_BACKEND_URL=https://your-app-name.onrender.com
 ```
 
 ### 2.2 Deploy Frontend
@@ -75,17 +75,17 @@ flutter build web
 ## Step 4: Update Mobile App Configuration
 
 ### 4.1 Update Backend URL
-In your Flutter app, update the backend URL to point to your Railway deployment:
+In your Flutter app, update the backend URL to point to your Render deployment:
 
 ```dart
 // In your Flutter app configuration
-const String backendUrl = 'https://your-app-name.railway.app';
+const String backendUrl = 'https://your-app-name.onrender.com';
 ```
 
 ## Step 5: Test the Complete System
 
 ### 5.1 Test Backend
-Visit: `https://your-app-name.railway.app/health`
+Visit: `https://your-app-name.onrender.com/health`
 Should return: `{"ok": true}`
 
 ### 5.2 Test Frontend
@@ -100,7 +100,7 @@ Should return: `{"ok": true}`
 
 ## Environment Variables Summary
 
-### Railway (Backend)
+### Render (Backend)
 ```
 NODE_ENV=production
 CORS_ORIGIN=*
@@ -111,7 +111,7 @@ PORT=3000
 
 ### Vercel (Frontend)
 ```
-VITE_BACKEND_URL=https://your-app-name.railway.app
+VITE_BACKEND_URL=https://your-app-name.onrender.com
 ```
 
 ### Flutter (Mobile)
@@ -120,7 +120,7 @@ Update the backend URL in your Flutter app configuration.
 ## Troubleshooting
 
 ### Backend Issues
-- Check Railway logs
+- Check Render logs
 - Verify environment variables
 - Test health endpoint
 
@@ -135,13 +135,13 @@ Update the backend URL in your Flutter app configuration.
 - Check device permissions
 
 ## Cost Estimation
-- **Railway**: Free tier (750 hours/month)
+- **Render**: Free tier (750 hours/month)
 - **Vercel**: Free tier (100GB bandwidth)
 - **Google Play**: $25 one-time fee
 - **Apple App Store**: $99/year
 
 ## Next Steps
-1. Deploy backend to Railway
+1. Deploy backend to Render
 2. Deploy frontend to Vercel
 3. Update URLs in mobile app
 4. Test complete system

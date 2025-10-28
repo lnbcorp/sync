@@ -1,4 +1,4 @@
-# Sync Backend - Railway Deployment
+# Sync Backend - Render Deployment
 
 ## Overview
 This is the Node.js backend for the Sync audio streaming app. It handles:
@@ -6,18 +6,23 @@ This is the Node.js backend for the Sync audio streaming app. It handles:
 - Session management
 - Real-time communication via Socket.io
 
-## Railway Deployment
+## Render Deployment
 
-### 1. Deploy to Railway
-1. Go to [railway.app](https://railway.app)
+### 1. Deploy to Render
+1. Go to [render.com](https://render.com)
 2. Sign in with GitHub
-3. Click "New Project" → "Deploy from GitHub repo"
-4. Select your repository
+3. Click "New" → "Web Service"
+4. Connect your GitHub repository
 5. Choose the `sync-app/backend` directory
-6. Railway will auto-detect Node.js and deploy
+6. Render will auto-detect Node.js and deploy
 
-### 2. Environment Variables
-Set these in Railway dashboard:
+### 2. Configuration
+- **Build Command**: `pnpm install`
+- **Start Command**: `node src/server.js`
+- **Node Version**: 18+ (auto-detected)
+
+### 3. Environment Variables
+Set these in Render dashboard:
 ```
 NODE_ENV=production
 CORS_ORIGIN=*
@@ -26,16 +31,16 @@ SESSION_TTL_SECONDS=1800
 PORT=3000
 ```
 
-### 3. Get Backend URL
-After deployment, Railway will provide a URL like:
+### 4. Get Backend URL
+After deployment, Render provides a URL like:
 ```
-https://your-app-name.railway.app
+https://your-app-name.onrender.com
 ```
 
-### 4. Update Frontend
+### 5. Update Frontend
 Update the frontend environment variable:
 ```
-VITE_BACKEND_URL=https://your-app-name.railway.app
+VITE_BACKEND_URL=https://your-app-name.onrender.com
 ```
 
 ## Local Development
@@ -46,7 +51,15 @@ pnpm run dev
 ```
 
 ## Health Check
-Visit: `https://your-app-name.railway.app/health`
+Visit: `https://your-app-name.onrender.com/health`
+
+## Render Advantages
+- ✅ Free tier (750 hours/month)
+- ✅ WebSocket support
+- ✅ Auto-deploy from GitHub
+- ✅ Custom domains
+- ✅ Environment variables
+- ✅ No credit card required
 
 ## Features
 - ✅ Session creation/joining

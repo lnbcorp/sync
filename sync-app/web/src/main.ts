@@ -29,7 +29,7 @@ class SyncApp {
   private async createSession() {
     try {
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 
-        (import.meta.env.DEV ? 'http://localhost:3000' : 'https://your-backend-url.railway.app');
+        (import.meta.env.DEV ? 'http://localhost:3000' : 'https://your-backend-url.onrender.com');
       
       const response = await fetch(`${backendUrl}/api/session/create`, {
         method: 'POST',
@@ -66,7 +66,7 @@ class SyncApp {
 
     try {
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 
-        (import.meta.env.DEV ? 'http://localhost:3000' : 'https://your-backend-url.railway.app');
+        (import.meta.env.DEV ? 'http://localhost:3000' : 'https://your-backend-url.onrender.com');
       
       const response = await fetch(`${backendUrl}/api/session/join`, {
         method: 'POST',
@@ -135,7 +135,7 @@ class SyncApp {
     if (this.sessionCode) {
       try {
         const backendUrl = import.meta.env.VITE_BACKEND_URL || 
-          (import.meta.env.DEV ? 'http://localhost:3000' : 'https://your-backend-url.railway.app');
+          (import.meta.env.DEV ? 'http://localhost:3000' : 'https://your-backend-url.onrender.com');
         
         await fetch(`${backendUrl}/api/session/leave`, {
           method: 'POST',
