@@ -1,14 +1,23 @@
 {
   "name": "sync-app",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@9.0.0",
   "workspaces": ["backend", "web", "shared"],
   "devDependencies": {
     "eslint": "^9.10.0",
-    "prettier": "^3.3.3"
+    "prettier": "^3.3.3",
+    "concurrently": "^8.2.2",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0"
   },
   "scripts": {
     "lint": "eslint .",
-    "format": "prettier -w ."
+    "format": "prettier -w .",
+    "build": "cd web && npm run build",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:web\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:web": "cd web && npm run dev",
+    "start": "cd backend && npm start"
   }
 }

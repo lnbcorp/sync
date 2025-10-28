@@ -5,7 +5,7 @@ export function createRedisClient(url) {
     const store = new Map();
     const expiries = new Map();
 
-    const now = () => Date.now();
+    // const now = () => Date.now();
 
     function _setExpiry(key, seconds) {
       if (expiries.has(key)) clearTimeout(expiries.get(key));
