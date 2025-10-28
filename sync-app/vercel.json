@@ -2,13 +2,6 @@
   "version": 2,
   "builds": [
     {
-      "src": "web/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
-    },
-    {
       "src": "api/index.js",
       "use": "@vercel/node"
     }
@@ -21,6 +14,10 @@
     {
       "src": "/socket.io/(.*)",
       "dest": "/api/index.js"
+    },
+    {
+      "src": "/",
+      "dest": "/web/dist/index.html"
     },
     {
       "src": "/(.*)",
