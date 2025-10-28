@@ -18,6 +18,7 @@
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:web\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:web": "cd web && npm run dev",
-    "start": "cd backend && npm start"
+    "start": "cd backend && npm start",
+    "vercel-build": "cd web && pnpm install && pnpm run build"
   }
 }
