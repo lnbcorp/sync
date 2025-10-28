@@ -9,21 +9,18 @@
       }
     },
     {
-      "src": "backend/src/server.js",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": ["backend/**"]
-      }
+      "src": "api/index.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/backend/src/server.js"
+      "dest": "/api/index.js"
     },
     {
       "src": "/socket.io/(.*)",
-      "dest": "/backend/src/server.js"
+      "dest": "/api/index.js"
     },
     {
       "src": "/(.*)",
@@ -35,7 +32,5 @@
     "CORS_ORIGIN": "*",
     "REDIS_URL": "memory",
     "SESSION_TTL_SECONDS": "1800"
-  },
-  "buildCommand": "cd web && pnpm install && pnpm run build",
-  "outputDirectory": "web/dist"
+  }
 }
