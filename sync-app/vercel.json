@@ -35,5 +35,7 @@
     "CORS_ORIGIN": "*",
     "REDIS_URL": "memory",
     "SESSION_TTL_SECONDS": "1800"
-  }
+  },
+  "buildCommand": "cd web && pnpm install && pnpm run build",
+  "outputDirectory": "web/dist"
 }

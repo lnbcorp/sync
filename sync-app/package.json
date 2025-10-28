@@ -14,7 +14,7 @@
   "scripts": {
     "lint": "eslint .",
     "format": "prettier -w .",
-    "build": "cd web && npm run build",
+    "build": "cd web && pnpm install && pnpm run build",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:web\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:web": "cd web && npm run dev",
