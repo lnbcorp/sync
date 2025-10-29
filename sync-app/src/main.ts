@@ -328,10 +328,32 @@ class SyncApp {
 
     pc.ontrack = (event) => {
       this.logToUI(`📺 Remote track received: ${event.track.kind}`);
-      const remoteVideo = document.getElementById('remote-video') as HTMLVideoElement | null;
-      if (remoteVideo) {
-        remoteVideo.srcObject = event.streams[0];
-        this.logToUI('✅ Remote video stream attached');
+      if (event.track.kind === 'audio') {
+        const remoteAudio = document.getElementById('remote-audio') as HTMLAudioElement | null;
+        const enableBtn = document.getElementById('enable-audio-btn') as HTMLButtonElement | null;
+        if (remoteAudio) {
+          remoteAudio.srcObject = event.streams[0];
+          remoteAudio.muted = false;
+          remoteAudio.play().catch(() => {
+            this.logToUI('🔇 Autoplay blocked. Showing Enable Audio button.');
+            if (enableBtn) {
+              enableBtn.style.display = 'inline-block';
+              enableBtn.onclick = () => {
+                remoteAudio.play().then(() => {
+                  enableBtn.style.display = 'none';
+                  this.logToUI('🔊 Audio playback enabled by user.');
+                }).catch((err) => this.logToUI(`❌ Audio play failed: ${err}`));
+              };
+            }
+          });
+          this.logToUI('✅ Remote audio stream attached');
+        }
+      } else {
+        const remoteVideo = document.getElementById('remote-video') as HTMLVideoElement | null;
+        if (remoteVideo) {
+          remoteVideo.srcObject = event.streams[0];
+          this.logToUI('✅ Remote video stream attached');
+        }
       }
     };
 
@@ -341,6 +363,20 @@ class SyncApp {
 
     pc.oniceconnectionstatechange = () => {
       this.logToUI(`🧊 ICE connection state: ${pc.iceConnectionState}`);
+    };
+
+    // Renegotiate automatically when tracks are added
+    pc.onnegotiationneeded = async () => {
+      try {
+        if (!this.sessionCode) return;
+        this.logToUI('📝 Negotiation needed: creating and sending new offer...');
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        this.socket?.emit('offer', { code: this.sessionCode, sdp: offer });
+        this.logToUI('📤 Renegotiation offer sent');
+      } catch (err) {
+        this.logToUI(`❌ Negotiation failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
     };
 
     // If we already have local tracks, add them to the new PC
