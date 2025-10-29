@@ -86,7 +86,7 @@ class SyncApp {
       this.connectToSocket();
       this.updateUI('listener');
     } catch (error) {
-      this.showError(`Failed to join session: ${error.message}`);
+      this.showError(`Failed to join session: ${error instanceof Error ? error.message : 'Unknown error'}`);
       console.error('Join session error:', error);
     }
   }
@@ -135,7 +135,7 @@ class SyncApp {
     if (this.sessionCode) {
       try {
         const backendUrl = import.meta.env.VITE_BACKEND_URL || 
-          (import.meta.env.DEV ? 'http://localhost:3000' : 'https://your-backend-url.onrender.com');
+          (import.meta.env.DEV ? 'http://localhost:3000' : 'https://sync-up-nsnr.onrender.com');
         
         await fetch(`${backendUrl}/api/session/leave`, {
           method: 'POST',
