@@ -1,24 +1,19 @@
 {
-  "name": "sync-app",
-  "private": true,
+  "name": "sync-web",
+  "version": "0.1.0",
   "type": "module",
-  "packageManager": "pnpm@9.0.0",
-  "workspaces": ["backend", "web", "shared"],
-  "devDependencies": {
-    "eslint": "^9.10.0",
-    "prettier": "^3.3.3",
-    "concurrently": "^8.2.2",
-    "@typescript-eslint/parser": "^7.0.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.0"
-  },
   "scripts": {
-    "lint": "eslint .",
-    "format": "prettier -w .",
-    "build": "cd web && pnpm install && pnpm run build",
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:web\"",
-    "dev:backend": "cd backend && npm run dev",
-    "dev:web": "cd web && npm run dev",
-    "start": "cd backend && npm start",
-    "vercel-build": "cd web && pnpm install && pnpm run build"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "vercel-build": "vite build"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.7.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0"
   }
 }
