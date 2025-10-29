@@ -177,13 +177,17 @@ class SyncApp {
     // Signaling: server requests existing peers to offer to a newcomer
     this.socket.on('request-offer', async ({ to, code }: any) => {
       try {
+        this.logToUI(`📨 Server requesting offer to ${to}`);
         if (!this.sessionCode) return;
         await this.ensurePeerConnection();
+        this.logToUI('📝 Creating offer...');
         const offer = await this.peerConnection!.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
         await this.peerConnection!.setLocalDescription(offer);
         this.socket.emit('offer', { code: code || this.sessionCode, sdp: offer, to });
+        this.logToUI(`📤 Sent offer to ${to}`);
         console.log('📨 Sent offer to', to);
       } catch (err) {
+        this.logToUI(`❌ Failed to create/send offer: ${err instanceof Error ? err.message : 'Unknown error'}`);
         console.error('Failed to create/send offer:', err);
       }
     });
@@ -191,13 +195,18 @@ class SyncApp {
     // Signaling: receive offer
     this.socket.on('offer', async ({ from, sdp, code }: any) => {
       try {
+        this.logToUI(`📨 Received offer from ${from}`);
         await this.ensurePeerConnection();
+        this.logToUI('📝 Setting remote description...');
         await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(sdp));
+        this.logToUI('📝 Creating answer...');
         const answer = await this.peerConnection!.createAnswer();
         await this.peerConnection!.setLocalDescription(answer);
         this.socket.emit('answer', { code: code || this.sessionCode, sdp: answer, to: from });
+        this.logToUI(`📤 Sent answer to ${from}`);
         console.log('📨 Sent answer to', from);
       } catch (err) {
+        this.logToUI(`❌ Failed to handle offer: ${err instanceof Error ? err.message : 'Unknown error'}`);
         console.error('Failed to handle offer:', err);
       }
     });
@@ -205,10 +214,13 @@ class SyncApp {
     // Signaling: receive answer
     this.socket.on('answer', async ({ sdp }: any) => {
       try {
+        this.logToUI('📨 Received answer');
         if (!this.peerConnection) return;
         await this.peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+        this.logToUI('✅ Remote description set from answer');
         console.log('✅ Remote description set from answer');
       } catch (err) {
+        this.logToUI(`❌ Failed to handle answer: ${err instanceof Error ? err.message : 'Unknown error'}`);
         console.error('Failed to handle answer:', err);
       }
     });
@@ -216,9 +228,12 @@ class SyncApp {
     // Signaling: receive ICE candidate
     this.socket.on('ice-candidate', async ({ candidate }: any) => {
       try {
+        this.logToUI(`🧊 Received ICE candidate: ${candidate.candidate.substring(0, 50)}...`);
         if (!this.peerConnection || !candidate) return;
         await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        this.logToUI('✅ ICE candidate added');
       } catch (err) {
+        this.logToUI(`❌ Failed to add ICE candidate: ${err instanceof Error ? err.message : 'Unknown error'}`);
         console.error('Failed to add ICE candidate:', err);
       }
     });
@@ -281,7 +296,12 @@ class SyncApp {
   }
 
   private async ensurePeerConnection() {
-    if (this.peerConnection) return;
+    if (this.peerConnection) {
+      this.logToUI('♻️ Using existing peer connection');
+      return;
+    }
+    
+    this.logToUI('🔧 Creating new peer connection...');
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -289,25 +309,43 @@ class SyncApp {
       ]
     });
     this.peerConnection = pc;
+    this.logToUI('✅ Peer connection created');
 
     pc.onicecandidate = (event) => {
       if (event.candidate && this.sessionCode) {
+        this.logToUI(`🧊 ICE candidate generated: ${event.candidate.candidate.substring(0, 50)}...`);
         this.socket?.emit('ice-candidate', { code: this.sessionCode, candidate: event.candidate });
+      } else if (event.candidate) {
+        this.logToUI('🧊 ICE candidate generated (no session code)');
+      } else {
+        this.logToUI('🧊 ICE gathering complete');
       }
     };
 
     pc.ontrack = (event) => {
+      this.logToUI(`📺 Remote track received: ${event.track.kind}`);
       const remoteVideo = document.getElementById('remote-video') as HTMLVideoElement | null;
       if (remoteVideo) {
         remoteVideo.srcObject = event.streams[0];
+        this.logToUI('✅ Remote video stream attached');
       }
+    };
+
+    pc.onconnectionstatechange = () => {
+      this.logToUI(`🔗 Connection state: ${pc.connectionState}`);
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      this.logToUI(`🧊 ICE connection state: ${pc.iceConnectionState}`);
     };
 
     // If we already have local tracks, add them to the new PC
     if (this.localStream) {
+      this.logToUI(`📡 Adding ${this.localStream.getTracks().length} local tracks to peer connection`);
       this.localStream.getTracks().forEach((t) => pc.addTrack(t, this.localStream!));
     }
     if (this.screenTrack) {
+      this.logToUI('📡 Adding screen track to peer connection');
       const screenStream = new MediaStream([this.screenTrack]);
       screenStream.getTracks().forEach((t) => pc.addTrack(t, screenStream));
     }
@@ -406,31 +444,57 @@ class SyncApp {
     try {
       if (this.isSharingAudio) return;
       
-      // Get system audio (requires screen sharing for audio capture)
-      const stream = await navigator.mediaDevices.getDisplayMedia({ 
-        video: false, 
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false
-        }
-      });
+      this.logToUI('🎵 Starting audio sharing...');
+      
+      // Try to get microphone audio first (no screen sharing required)
+      let stream: MediaStream;
+      try {
+        this.logToUI('📱 Requesting microphone access...');
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            sampleRate: 44100
+          }
+        });
+        this.logToUI('✅ Microphone access granted');
+      } catch (micError) {
+        this.logToUI('⚠️ Microphone access denied, trying system audio...');
+        // Fallback to system audio (requires screen sharing)
+        stream = await navigator.mediaDevices.getDisplayMedia({ 
+          video: false, 
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+          }
+        });
+        this.logToUI('✅ System audio access granted');
+      }
       
       this.audioStream = stream;
       this.isSharingAudio = true;
       
+      this.logToUI('🔌 Setting up peer connection...');
       await this.ensurePeerConnection();
       
       // Add audio track to peer connection
       const audioTrack = stream.getAudioTracks()[0];
       if (audioTrack) {
+        this.logToUI(`📡 Adding audio track: ${audioTrack.label}`);
         const dummyStream = new MediaStream([audioTrack]);
         this.peerConnection!.addTrack(audioTrack, dummyStream);
+        this.logToUI('✅ Audio track added to peer connection');
+      } else {
+        this.logToUI('❌ No audio track found in stream');
+        throw new Error('No audio track available');
       }
       
       // Handle when user stops sharing
       stream.getTracks().forEach(track => {
         track.onended = () => {
+          this.logToUI('🛑 Audio track ended by user');
           this.stopAudioSharing();
         };
       });
@@ -440,16 +504,19 @@ class SyncApp {
       (document.getElementById('stop-audio-btn') as HTMLButtonElement)?.removeAttribute('disabled');
       
       this.showStatus('🎵 Audio sharing started');
+      this.logToUI('🎵 Audio sharing started successfully!');
       console.log('🎵 Audio sharing started');
     } catch (err) {
       console.error('Failed to start audio sharing:', err);
-      this.showError('Could not start audio sharing. Please allow screen sharing for audio.');
+      this.logToUI(`❌ Audio sharing failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      this.showError(`Could not start audio sharing: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   }
 
   private stopAudioSharing() {
     if (!this.isSharingAudio || !this.audioStream) return;
     
+    this.logToUI('🔇 Stopping audio sharing...');
     this.audioStream.getTracks().forEach(track => track.stop());
     this.audioStream = null;
     this.isSharingAudio = false;
@@ -459,7 +526,31 @@ class SyncApp {
     (document.getElementById('stop-audio-btn') as HTMLButtonElement)?.setAttribute('disabled', 'true');
     
     this.showStatus('🔇 Audio sharing stopped');
+    this.logToUI('🔇 Audio sharing stopped');
     console.log('🔇 Audio sharing stopped');
+  }
+
+  private logToUI(message: string) {
+    const logContent = document.getElementById('log-content');
+    const devLogs = document.getElementById('dev-logs');
+    
+    if (logContent) {
+      const timestamp = new Date().toLocaleTimeString();
+      const logEntry = document.createElement('div');
+      logEntry.textContent = `[${timestamp}] ${message}`;
+      logEntry.style.marginBottom = '4px';
+      logContent.appendChild(logEntry);
+      
+      // Auto-scroll to bottom
+      logContent.scrollTop = logContent.scrollHeight;
+    }
+    
+    // Show logs in development mode
+    if (import.meta.env.DEV && devLogs) {
+      devLogs.classList.remove('hidden');
+    }
+    
+    console.log(`[UI LOG] ${message}`);
   }
 
   private updateUI(mode: 'initial' | 'host' | 'listener') {
