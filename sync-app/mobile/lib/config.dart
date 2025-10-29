@@ -3,5 +3,5 @@
 
 const signalingUrl = String.fromEnvironment(
   'SIGNALING_URL',
-  defaultValue: 'http://localhost:3000',
+  defaultValue: 'https://sync-up-nsnr.onrender.com',
 );
