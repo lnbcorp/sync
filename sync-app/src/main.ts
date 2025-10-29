@@ -4,7 +4,7 @@ class SyncApp {
   private socket: any = null;
   private sessionCode: string | null = null;
   private isHost: boolean = false;
-  private peerConnection: RTCPeerConnection | null = null;
+  private peerIdToPeerConnection: Map<string, RTCPeerConnection> = new Map();
   private localStream: MediaStream | null = null;
   private screenTrack: MediaStreamTrack | null = null;
   private audioStream: MediaStream | null = null;
@@ -144,11 +144,20 @@ class SyncApp {
     this.socket.on('participant-joined', (data: any) => {
       console.log('Participant joined:', data.id);
       this.showStatus(`Participant joined (${data.id})`);
+      // Pre-create PC so tracks are ready
+      this.ensurePeerConnectionFor(data.id).catch(() => {});
     });
 
     this.socket.on('participant-left', (data: any) => {
       console.log('Participant left:', data.id);
       this.showStatus(`Participant left (${data.id})`);
+      const pc = this.peerIdToPeerConnection.get(data.id);
+      if (pc) {
+        try { pc.getSenders().forEach(s => s.track && s.track.stop()); } catch {}
+        try { pc.close(); } catch {}
+        this.peerIdToPeerConnection.delete(data.id);
+        this.logToUI(`🔻 Closed and removed PC for ${data.id}`);
+      }
     });
 
     this.socket.on('room-size', (data: any) => {
@@ -176,11 +185,11 @@ class SyncApp {
       try {
         this.logToUI(`📨 Server requesting offer to ${to}`);
         if (!this.sessionCode) return;
-        await this.ensurePeerConnection();
+        const pc = await this.ensurePeerConnectionFor(to);
         this.logToUI('📝 Creating offer...');
-        const rawOffer = await this.peerConnection!.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+        const rawOffer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
         const tunedOffer = { type: rawOffer.type, sdp: this.tuneOpusInSdp(rawOffer.sdp || '') } as RTCSessionDescriptionInit;
-        await this.peerConnection!.setLocalDescription(tunedOffer);
+        await pc.setLocalDescription(tunedOffer);
         this.socket.emit('offer', { code: code || this.sessionCode, sdp: tunedOffer, to });
         this.logToUI(`📤 Sent offer to ${to}`);
         console.log('📨 Sent offer to', to);
@@ -194,13 +203,13 @@ class SyncApp {
     this.socket.on('offer', async ({ from, sdp, code }: any) => {
       try {
         this.logToUI(`📨 Received offer from ${from}`);
-        await this.ensurePeerConnection();
+        const pc = await this.ensurePeerConnectionFor(from);
         this.logToUI('📝 Setting remote description...');
-        await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(sdp));
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
         this.logToUI('📝 Creating answer...');
-        let answer = await this.peerConnection!.createAnswer();
+        let answer = await pc.createAnswer();
         answer = { type: answer.type, sdp: this.tuneOpusInSdp(answer.sdp || '') } as RTCSessionDescriptionInit;
-        await this.peerConnection!.setLocalDescription(answer);
+        await pc.setLocalDescription(answer);
         this.socket.emit('answer', { code: code || this.sessionCode, sdp: answer, to: from });
         this.logToUI(`📤 Sent answer to ${from}`);
         console.log('📨 Sent answer to', from);
@@ -211,11 +220,12 @@ class SyncApp {
     });
 
     // Signaling: receive answer
-    this.socket.on('answer', async ({ sdp }: any) => {
+    this.socket.on('answer', async ({ from, sdp }: any) => {
       try {
         this.logToUI('📨 Received answer');
-        if (!this.peerConnection) return;
-        await this.peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+        const pc = from ? this.peerIdToPeerConnection.get(from) : null;
+        if (!pc) return;
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
         this.logToUI('✅ Remote description set from answer');
         console.log('✅ Remote description set from answer');
       } catch (err) {
@@ -225,11 +235,12 @@ class SyncApp {
     });
 
     // Signaling: receive ICE candidate
-    this.socket.on('ice-candidate', async ({ candidate }: any) => {
+    this.socket.on('ice-candidate', async ({ from, candidate }: any) => {
       try {
-        this.logToUI(`🧊 Received ICE candidate: ${candidate.candidate.substring(0, 50)}...`);
-        if (!this.peerConnection || !candidate) return;
-        await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        this.logToUI(`🧊 Received ICE candidate from ${from}: ${candidate.candidate.substring(0, 50)}...`);
+        const pc = from ? this.peerIdToPeerConnection.get(from) : null;
+        if (!pc || !candidate) return;
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
         this.logToUI('✅ ICE candidate added');
       } catch (err) {
         this.logToUI(`❌ Failed to add ICE candidate: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -294,13 +305,11 @@ class SyncApp {
     }
   }
 
-  private async ensurePeerConnection() {
-    if (this.peerConnection) {
-      this.logToUI('♻️ Using existing peer connection');
-      return;
-    }
-    
-    this.logToUI('🔧 Creating new peer connection...');
+  private async ensurePeerConnectionFor(peerId: string): Promise<RTCPeerConnection> {
+    const existing = this.peerIdToPeerConnection.get(peerId);
+    if (existing) return existing;
+
+    this.logToUI(`🔧 Creating new peer connection for ${peerId}...`);
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: [
@@ -314,22 +323,22 @@ class SyncApp {
       ]
     });
     this.logToUI('🧊 ICE servers configured: Google STUN + stunprotocol');
-    this.peerConnection = pc;
-    this.logToUI('✅ Peer connection created');
+    this.peerIdToPeerConnection.set(peerId, pc);
+    this.logToUI(`✅ Peer connection created for ${peerId}`);
 
     pc.onicecandidate = (event) => {
       if (event.candidate && this.sessionCode) {
-        this.logToUI(`🧊 ICE candidate generated: ${event.candidate.candidate.substring(0, 50)}...`);
-        this.socket?.emit('ice-candidate', { code: this.sessionCode, candidate: event.candidate });
+        this.logToUI(`🧊 ICE candidate for ${peerId}: ${event.candidate.candidate.substring(0, 50)}...`);
+        this.socket?.emit('ice-candidate', { code: this.sessionCode, candidate: event.candidate, to: peerId });
       } else if (event.candidate) {
-        this.logToUI('🧊 ICE candidate generated (no session code)');
+        this.logToUI(`🧊 ICE candidate generated (no session code) for ${peerId}`);
       } else {
-        this.logToUI('🧊 ICE gathering complete');
+        this.logToUI(`🧊 ICE gathering complete for ${peerId}`);
       }
     };
 
     pc.ontrack = (event) => {
-      this.logToUI(`📺 Remote track received: ${event.track.kind}`);
+      this.logToUI(`📺 Remote track received from ${peerId}: ${event.track.kind}`);
       if (event.track.kind === 'audio') {
         const remoteAudio = document.getElementById('remote-audio') as HTMLAudioElement | null;
         const enableBtn = document.getElementById('enable-audio-btn') as HTMLButtonElement | null;
@@ -348,6 +357,15 @@ class SyncApp {
               };
             }
           });
+          try {
+            pc.getReceivers().forEach((r) => {
+              if (r.track && r.track.kind === 'audio' && 'playoutDelayHint' in r) {
+                // @ts-ignore
+                r.playoutDelayHint = 0.02;
+                this.logToUI('⏱️ Set playoutDelayHint=0.02s on audio receiver');
+              }
+            });
+          } catch {}
           this.logToUI('✅ Remote audio stream attached');
         }
       } else {
@@ -360,37 +378,24 @@ class SyncApp {
     };
 
     pc.onconnectionstatechange = () => {
-      this.logToUI(`🔗 Connection state: ${pc.connectionState}`);
+      this.logToUI(`🔗 Connection state (${peerId}): ${pc.connectionState}`);
     };
 
     pc.oniceconnectionstatechange = () => {
-      this.logToUI(`🧊 ICE connection state: ${pc.iceConnectionState}`);
+      this.logToUI(`🧊 ICE connection state (${peerId}): ${pc.iceConnectionState}`);
     };
 
-    // Renegotiate automatically when tracks are added
-    pc.onnegotiationneeded = async () => {
-      try {
-        if (!this.sessionCode) return;
-        this.logToUI('📝 Negotiation needed: creating and sending new offer...');
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        this.socket?.emit('offer', { code: this.sessionCode, sdp: offer });
-        this.logToUI('📤 Renegotiation offer sent');
-      } catch (err) {
-        this.logToUI(`❌ Negotiation failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      }
+    // Add existing local tracks to this new PC
+    const addTracks = () => {
+      const audioTracks = this.audioStream?.getAudioTracks() || [];
+      const videoTracks: MediaStreamTrack[] = [];
+      if (this.localStream) videoTracks.push(...this.localStream.getVideoTracks());
+      if (this.screenTrack) videoTracks.push(this.screenTrack);
+      [...audioTracks, ...videoTracks].forEach((t) => pc.addTrack(t, new MediaStream([t])));
     };
+    addTracks();
 
-    // If we already have local tracks, add them to the new PC
-    if (this.localStream) {
-      this.logToUI(`📡 Adding ${this.localStream.getTracks().length} local tracks to peer connection`);
-      this.localStream.getTracks().forEach((t) => pc.addTrack(t, this.localStream!));
-    }
-    if (this.screenTrack) {
-      this.logToUI('📡 Adding screen track to peer connection');
-      const screenStream = new MediaStream([this.screenTrack]);
-      screenStream.getTracks().forEach((t) => pc.addTrack(t, screenStream));
-    }
+    return pc;
   }
 
   private async startCamera() {
@@ -401,8 +406,17 @@ class SyncApp {
       const localVideo = document.getElementById('local-video') as HTMLVideoElement | null;
       if (localVideo) localVideo.srcObject = stream;
 
-      await this.ensurePeerConnection();
-      stream.getTracks().forEach((t) => this.peerConnection!.addTrack(t, stream));
+      // Add camera tracks to all peers
+      this.peerIdToPeerConnection.forEach((pc, peerId) => {
+        stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+        pc.createOffer().then((raw) => {
+          const tuned = { type: raw.type, sdp: this.tuneOpusInSdp(raw.sdp || '') } as RTCSessionDescriptionInit;
+          pc.setLocalDescription(tuned).then(() => {
+            this.socket?.emit('offer', { code: this.sessionCode, sdp: tuned, to: peerId });
+            this.logToUI(`📤 Sent renegotiation offer (camera) to ${peerId}`);
+          });
+        });
+      });
 
       // Enable related controls
       (document.getElementById('stop-camera-btn') as HTMLButtonElement)?.removeAttribute('disabled');
@@ -429,8 +443,17 @@ class SyncApp {
       const track = displayStream.getVideoTracks()[0];
       this.screenTrack = track;
 
-      await this.ensurePeerConnection();
-      const sender = this.replaceOrAddVideoTrack(track);
+      // Replace/add screen video track across peers and renegotiate
+      this.replaceOrAddVideoTrack(track);
+      this.peerIdToPeerConnection.forEach((pc, peerId) => {
+        pc.createOffer().then((raw) => {
+          const tuned = { type: raw.type, sdp: this.tuneOpusInSdp(raw.sdp || '') } as RTCSessionDescriptionInit;
+          pc.setLocalDescription(tuned).then(() => {
+            this.socket?.emit('offer', { code: this.sessionCode, sdp: tuned, to: peerId });
+            this.logToUI(`📤 Sent renegotiation offer (screen) to ${peerId}`);
+          });
+        });
+      });
 
       track.onended = () => {
         this.stopScreenShare();
@@ -459,15 +482,19 @@ class SyncApp {
 
   // Helper: replace existing video track in sender if any, otherwise add
   private replaceOrAddVideoTrack(track: MediaStreamTrack) {
-    if (!this.peerConnection) return null;
-    const senders = this.peerConnection.getSenders();
-    const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
-    if (videoSender) {
-      videoSender.replaceTrack(track);
-      return videoSender;
-    }
-    const dummyStream = new MediaStream([track]);
-    return this.peerConnection.addTrack(track, dummyStream);
+    let sender: RTCRtpSender | null = null;
+    this.peerIdToPeerConnection.forEach((pc) => {
+      const senders = pc.getSenders();
+      const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
+      if (videoSender) {
+        videoSender.replaceTrack(track);
+        sender = videoSender;
+      } else {
+        const dummyStream = new MediaStream([track]);
+        pc.addTrack(track, dummyStream);
+      }
+    });
+    return sender;
   }
 
   private async startAudioSharing() {
@@ -499,15 +526,22 @@ class SyncApp {
       this.isSharingAudio = true;
       
       this.logToUI('🔌 Setting up peer connection...');
-      await this.ensurePeerConnection();
-      
-      // Add audio track to peer connection
+      // Add audio track to all peer connections (existing)
       const audioTrack = stream.getAudioTracks()[0];
       if (audioTrack) {
-        this.logToUI(`📡 Adding system audio track: ${audioTrack.label}`);
-        const dummyStream = new MediaStream([audioTrack]);
-        this.peerConnection!.addTrack(audioTrack, dummyStream);
-        this.logToUI('✅ System audio track added to peer connection');
+        this.logToUI(`📡 Adding system audio track to all peers: ${audioTrack.label}`);
+        this.peerIdToPeerConnection.forEach((pc, peerId) => {
+          pc.addTrack(audioTrack, new MediaStream([audioTrack]));
+          // renegotiate per peer
+          pc.createOffer().then((raw) => {
+            const tuned = { type: raw.type, sdp: this.tuneOpusInSdp(raw.sdp || '') } as RTCSessionDescriptionInit;
+            pc.setLocalDescription(tuned).then(() => {
+              this.socket?.emit('offer', { code: this.sessionCode, sdp: tuned, to: peerId });
+              this.logToUI(`📤 Sent renegotiation offer to ${peerId}`);
+            });
+          });
+        });
+        this.logToUI('✅ System audio track added to peer connections');
       } else {
         this.logToUI('❌ No audio track found in stream');
         throw new Error('No system audio track available');
