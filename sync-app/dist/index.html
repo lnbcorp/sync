@@ -108,7 +108,7 @@
       display: none;
     }
   </style>
-  <script type="module" crossorigin src="/assets/index-rk4QgJPM.js"></script>
+  <script type="module" crossorigin src="/assets/index-DWxuYKBT.js"></script>
 </head>
 <body>
   <div class="container">
@@ -131,6 +131,23 @@
       </div>
       
       <div id="controls" class="hidden">
+        <div class="button-group" style="margin-bottom: 16px;">
+          <button id="start-camera-btn">Start Camera</button>
+          <button id="stop-camera-btn" disabled>Stop Camera</button>
+          <button id="toggle-mic-btn" disabled>Mute Mic</button>
+          <button id="share-screen-btn">Share Screen</button>
+          <button id="stop-share-btn" disabled>Stop Share</button>
+        </div>
+        <div style="display:flex; gap:16px; justify-content:center; flex-wrap:wrap; margin-bottom:16px;">
+          <div>
+            <div style="margin-bottom:8px; font-weight:600;">Local Preview</div>
+            <video id="local-video" autoplay playsinline muted style="width:260px; border-radius:12px; background:#000;" ></video>
+          </div>
+          <div>
+            <div style="margin-bottom:8px; font-weight:600;">Remote</div>
+            <video id="remote-video" autoplay playsinline style="width:260px; border-radius:12px; background:#000;"></video>
+          </div>
+        </div>
         <button id="leave-session-btn">Leave Session</button>
         <div id="connection-status" class="status"></div>
       </div>
