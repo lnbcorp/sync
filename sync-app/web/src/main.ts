@@ -31,6 +31,9 @@ class SyncApp {
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 
         (import.meta.env.DEV ? 'http://localhost:3000' : 'https://your-backend-url.onrender.com');
       
+      console.log('🔗 Creating session with backend URL:', backendUrl);
+      console.log('📡 Making request to:', `${backendUrl}/api/session/create`);
+      
       const response = await fetch(`${backendUrl}/api/session/create`, {
         method: 'POST',
         headers: {
@@ -38,11 +41,17 @@ class SyncApp {
         },
       });
 
+      console.log('📊 Response status:', response.status, response.statusText);
+      
       if (!response.ok) {
-        throw new Error('Failed to create session');
+        const errorText = await response.text();
+        console.error('❌ API Error:', errorText);
+        throw new Error(`Failed to create session: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
+      console.log('✅ Session created successfully:', data);
+      
       this.sessionCode = data.code;
       this.isHost = true;
 
@@ -92,17 +101,24 @@ class SyncApp {
   }
 
   private connectToSocket() {
-    if (!this.sessionCode) return;
+    if (!this.sessionCode) {
+      console.log('⚠️ No session code, skipping socket connection');
+      return;
+    }
 
     const backendUrl = import.meta.env.VITE_BACKEND_URL || 
       (import.meta.env.DEV ? 'http://localhost:3000' : 'https://your-backend-url.railway.app');
+
+    console.log('🔌 Connecting to socket with URL:', backendUrl);
+    console.log('📝 Session code:', this.sessionCode);
 
     this.socket = io(backendUrl, {
       transports: ['websocket', 'polling']
     });
 
     this.socket.on('connect', () => {
-      console.log('Connected to server');
+      console.log('✅ Connected to server');
+      console.log('📤 Emitting join with code:', this.sessionCode);
       this.socket.emit('join', { code: this.sessionCode });
     });
 
@@ -122,12 +138,18 @@ class SyncApp {
     });
 
     this.socket.on('error', (data: any) => {
+      console.error('❌ Socket error:', data);
       this.showError(data.message);
     });
 
-    this.socket.on('disconnect', () => {
-      console.log('Disconnected from server');
+    this.socket.on('disconnect', (reason: any) => {
+      console.log('🔌 Disconnected from server. Reason:', reason);
       this.showError('Connection lost. Please try again.');
+    });
+
+    this.socket.on('connect_error', (error: any) => {
+      console.error('❌ Socket connection error:', error);
+      this.showError(`Connection failed: ${error.message}`);
     });
   }
 
@@ -220,5 +242,17 @@ class SyncApp {
 
 // Initialize the app when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-  new SyncApp();
+  console.log('🚀 Sync App initializing...');
+  console.log('Environment:', {
+    DEV: import.meta.env.DEV,
+    VITE_BACKEND_URL: import.meta.env.VITE_BACKEND_URL,
+    location: window.location.href
+  });
+  
+  try {
+    new SyncApp();
+    console.log('✅ Sync App initialized successfully');
+  } catch (error) {
+    console.error('❌ Failed to initialize Sync App:', error);
+  }
 });
