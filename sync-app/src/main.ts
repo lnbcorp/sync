@@ -178,9 +178,10 @@ class SyncApp {
         if (!this.sessionCode) return;
         await this.ensurePeerConnection();
         this.logToUI('📝 Creating offer...');
-        const offer = await this.peerConnection!.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
-        await this.peerConnection!.setLocalDescription(offer);
-        this.socket.emit('offer', { code: code || this.sessionCode, sdp: offer, to });
+        const rawOffer = await this.peerConnection!.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+        const tunedOffer = { type: rawOffer.type, sdp: this.tuneOpusInSdp(rawOffer.sdp || '') } as RTCSessionDescriptionInit;
+        await this.peerConnection!.setLocalDescription(tunedOffer);
+        this.socket.emit('offer', { code: code || this.sessionCode, sdp: tunedOffer, to });
         this.logToUI(`📤 Sent offer to ${to}`);
         console.log('📨 Sent offer to', to);
       } catch (err) {
@@ -197,7 +198,8 @@ class SyncApp {
         this.logToUI('📝 Setting remote description...');
         await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(sdp));
         this.logToUI('📝 Creating answer...');
-        const answer = await this.peerConnection!.createAnswer();
+        let answer = await this.peerConnection!.createAnswer();
+        answer = { type: answer.type, sdp: this.tuneOpusInSdp(answer.sdp || '') } as RTCSessionDescriptionInit;
         await this.peerConnection!.setLocalDescription(answer);
         this.socket.emit('answer', { code: code || this.sessionCode, sdp: answer, to: from });
         this.logToUI(`📤 Sent answer to ${from}`);
@@ -549,6 +551,31 @@ class SyncApp {
     if (isSafari) return false;
     if (!('getDisplayMedia' in (navigator.mediaDevices as any))) return false;
     return isChromeLike;
+  }
+
+  private tuneOpusInSdp(sdp: string): string {
+    try {
+      const lines = sdp.split(/\r?\n/);
+      const rtpmapIndex = lines.findIndex((l) => /a=rtpmap:\d+ opus\//i.test(l));
+      if (rtpmapIndex === -1) return sdp;
+      const ptMatch = lines[rtpmapIndex].match(/a=rtpmap:(\d+)/);
+      if (!ptMatch) return sdp;
+      const pt = ptMatch[1];
+      const fmtpIndex = lines.findIndex((l) => new RegExp(`^a=fmtp:${pt}`).test(l));
+      const tune = 'stereo=1;sprop-stereo=1;maxaveragebitrate=160000;maxplaybackrate=48000;ptime=10;minptime=10;usedtx=1';
+      if (fmtpIndex >= 0) {
+        if (lines[fmtpIndex].includes(' ')) {
+          lines[fmtpIndex] = lines[fmtpIndex] + ';' + tune;
+        } else {
+          lines[fmtpIndex] = `a=fmtp:${pt} ${tune}`;
+        }
+      } else {
+        lines.splice(rtpmapIndex + 1, 0, `a=fmtp:${pt} ${tune}`);
+      }
+      return lines.join('\r\n');
+    } catch {
+      return sdp;
+    }
   }
 
   private stopAudioSharing() {
