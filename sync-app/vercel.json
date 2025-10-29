@@ -5,7 +5,8 @@
       "src": "web/package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "dist"
+        "distDir": "dist",
+        "buildCommand": "pnpm install && pnpm run build"
       }
     }
   ],
@@ -13,10 +14,6 @@
     {
       "src": "/assets/(.*)",
       "dest": "/web/dist/assets/$1"
-    },
-    {
-      "src": "/",
-      "dest": "/web/dist/index.html"
     },
     {
       "src": "/(.*)",
