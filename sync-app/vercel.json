@@ -6,7 +6,7 @@
       "use": "@vercel/static-build",
       "config": {
         "distDir": "dist",
-        "buildCommand": "pnpm install --no-frozen-lockfile && pnpm run build"
+        "buildCommand": "pnpm install && pnpm run build"
       }
     }
   ],
