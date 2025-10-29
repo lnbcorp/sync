@@ -14,5 +14,8 @@
       "src": "/(.*)",
       "dest": "/web/dist/$1"
     }
-  ]
+  ],
+  "buildCommand": "pnpm run vercel-build",
+  "outputDirectory": "web/dist",
+  "installCommand": "pnpm install --no-frozen-lockfile"
 }
