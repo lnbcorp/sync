@@ -436,18 +436,25 @@ class SyncApp {
     try {
       if (this.isSharingAudio) return;
       
+      if (!this.isSystemAudioSupported()) {
+        const msg = 'System audio capture is not supported in this browser. Use Chrome on desktop and select "Share tab audio".';
+        this.logToUI(`❌ ${msg}`);
+        this.showError(msg);
+        return;
+      }
+
       this.logToUI('🎵 Starting system audio sharing...');
       this.logToUI('📺 Requesting screen sharing for audio capture...');
       
-      // Get system audio (requires screen sharing for audio capture)
+      // Some browsers (Chrome) require a video track to enable "Share tab audio"
       const stream = await navigator.mediaDevices.getDisplayMedia({ 
-        video: false, 
+        video: { width: 1, height: 1, frameRate: 1, cursor: 'never' as any }, 
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false
-        }
-      });
+        } as MediaTrackConstraints
+      } as DisplayMediaStreamConstraints);
       
       this.logToUI('✅ System audio access granted');
       this.audioStream = stream;
@@ -466,6 +473,12 @@ class SyncApp {
       } else {
         this.logToUI('❌ No audio track found in stream');
         throw new Error('No system audio track available');
+      }
+
+      // Do NOT add video tracks to the peer connection; keep them running to allow audio
+      const videoTracks = stream.getVideoTracks();
+      if (videoTracks.length) {
+        this.logToUI('ℹ️ Keeping minimal video track alive (not sent) to permit tab audio');
       }
       
       // Handle when user stops sharing
@@ -488,6 +501,18 @@ class SyncApp {
       this.logToUI(`❌ System audio sharing failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
       this.showError(`Could not start system audio sharing: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
+  }
+
+  private isSystemAudioSupported(): boolean {
+    const ua = navigator.userAgent.toLowerCase();
+    const isIOS = /iphone|ipad|ipod/.test(ua);
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    // Best effort: Chrome/Edge desktop generally support tab/system audio via getDisplayMedia
+    const isChromeLike = /chrome|edg\//.test(ua) && !/mobile/.test(ua);
+    if (isIOS) return false;
+    if (isSafari) return false;
+    if (!('getDisplayMedia' in (navigator.mediaDevices as any))) return false;
+    return isChromeLike;
   }
 
   private stopAudioSharing() {
