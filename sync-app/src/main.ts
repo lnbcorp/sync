@@ -8,6 +8,8 @@ class SyncApp {
   private localStream: MediaStream | null = null;
   private screenTrack: MediaStreamTrack | null = null;
   private micMuted: boolean = false;
+  private audioStream: MediaStream | null = null;
+  private isSharingAudio: boolean = false;
 
   constructor() {
     this.initializeEventListeners();
@@ -19,6 +21,8 @@ class SyncApp {
     const joinBtn = document.getElementById('join-session-btn') as HTMLButtonElement;
     const leaveBtn = document.getElementById('leave-session-btn') as HTMLButtonElement;
     const joinCodeInput = document.getElementById('join-code') as HTMLInputElement;
+    const startAudioBtn = document.getElementById('start-audio-btn') as HTMLButtonElement;
+    const stopAudioBtn = document.getElementById('stop-audio-btn') as HTMLButtonElement;
     const startCamBtn = document.getElementById('start-camera-btn') as HTMLButtonElement;
     const stopCamBtn = document.getElementById('stop-camera-btn') as HTMLButtonElement;
     const toggleMicBtn = document.getElementById('toggle-mic-btn') as HTMLButtonElement;
@@ -35,6 +39,8 @@ class SyncApp {
       }
     });
 
+    startAudioBtn?.addEventListener('click', () => this.startAudioSharing());
+    stopAudioBtn?.addEventListener('click', () => this.stopAudioSharing());
     startCamBtn?.addEventListener('click', () => this.startCamera());
     stopCamBtn?.addEventListener('click', () => this.stopCamera());
     toggleMicBtn?.addEventListener('click', () => this.toggleMic());
@@ -394,6 +400,66 @@ class SyncApp {
     }
     const dummyStream = new MediaStream([track]);
     return this.peerConnection.addTrack(track, dummyStream);
+  }
+
+  private async startAudioSharing() {
+    try {
+      if (this.isSharingAudio) return;
+      
+      // Get system audio (requires screen sharing for audio capture)
+      const stream = await navigator.mediaDevices.getDisplayMedia({ 
+        video: false, 
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        }
+      });
+      
+      this.audioStream = stream;
+      this.isSharingAudio = true;
+      
+      await this.ensurePeerConnection();
+      
+      // Add audio track to peer connection
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) {
+        const dummyStream = new MediaStream([audioTrack]);
+        this.peerConnection!.addTrack(audioTrack, dummyStream);
+      }
+      
+      // Handle when user stops sharing
+      stream.getTracks().forEach(track => {
+        track.onended = () => {
+          this.stopAudioSharing();
+        };
+      });
+      
+      // Update UI
+      (document.getElementById('start-audio-btn') as HTMLButtonElement)?.setAttribute('disabled', 'true');
+      (document.getElementById('stop-audio-btn') as HTMLButtonElement)?.removeAttribute('disabled');
+      
+      this.showStatus('🎵 Audio sharing started');
+      console.log('🎵 Audio sharing started');
+    } catch (err) {
+      console.error('Failed to start audio sharing:', err);
+      this.showError('Could not start audio sharing. Please allow screen sharing for audio.');
+    }
+  }
+
+  private stopAudioSharing() {
+    if (!this.isSharingAudio || !this.audioStream) return;
+    
+    this.audioStream.getTracks().forEach(track => track.stop());
+    this.audioStream = null;
+    this.isSharingAudio = false;
+    
+    // Update UI
+    (document.getElementById('start-audio-btn') as HTMLButtonElement)?.removeAttribute('disabled');
+    (document.getElementById('stop-audio-btn') as HTMLButtonElement)?.setAttribute('disabled', 'true');
+    
+    this.showStatus('🔇 Audio sharing stopped');
+    console.log('🔇 Audio sharing stopped');
   }
 
   private updateUI(mode: 'initial' | 'host' | 'listener') {
