@@ -5,7 +5,8 @@
       "src": "web/package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "dist"
+        "distDir": "dist",
+        "buildCommand": "pnpm install --no-frozen-lockfile && pnpm run build"
       }
     }
   ],
@@ -14,8 +15,5 @@
       "src": "/(.*)",
       "dest": "/web/dist/$1"
     }
-  ],
-  "buildCommand": "pnpm run vercel-build",
-  "outputDirectory": "web/dist",
-  "installCommand": "pnpm install --no-frozen-lockfile"
+  ]
 }
