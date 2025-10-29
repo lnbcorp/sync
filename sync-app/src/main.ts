@@ -7,7 +7,6 @@ class SyncApp {
   private peerConnection: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
   private screenTrack: MediaStreamTrack | null = null;
-  private micMuted: boolean = false;
   private audioStream: MediaStream | null = null;
   private isSharingAudio: boolean = false;
 
@@ -25,7 +24,6 @@ class SyncApp {
     const stopAudioBtn = document.getElementById('stop-audio-btn') as HTMLButtonElement;
     const startCamBtn = document.getElementById('start-camera-btn') as HTMLButtonElement;
     const stopCamBtn = document.getElementById('stop-camera-btn') as HTMLButtonElement;
-    const toggleMicBtn = document.getElementById('toggle-mic-btn') as HTMLButtonElement;
     const shareScreenBtn = document.getElementById('share-screen-btn') as HTMLButtonElement;
     const stopShareBtn = document.getElementById('stop-share-btn') as HTMLButtonElement;
 
@@ -43,7 +41,6 @@ class SyncApp {
     stopAudioBtn?.addEventListener('click', () => this.stopAudioSharing());
     startCamBtn?.addEventListener('click', () => this.startCamera());
     stopCamBtn?.addEventListener('click', () => this.stopCamera());
-    toggleMicBtn?.addEventListener('click', () => this.toggleMic());
     shareScreenBtn?.addEventListener('click', () => this.startScreenShare());
     stopShareBtn?.addEventListener('click', () => this.stopScreenShare());
   }
@@ -361,7 +358,7 @@ class SyncApp {
   private async startCamera() {
     try {
       if (this.localStream) return;
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       this.localStream = stream;
       const localVideo = document.getElementById('local-video') as HTMLVideoElement | null;
       if (localVideo) localVideo.srcObject = stream;
@@ -371,10 +368,9 @@ class SyncApp {
 
       // Enable related controls
       (document.getElementById('stop-camera-btn') as HTMLButtonElement)?.removeAttribute('disabled');
-      (document.getElementById('toggle-mic-btn') as HTMLButtonElement)?.removeAttribute('disabled');
     } catch (err) {
       console.error('Failed to start camera:', err);
-      this.showError('Could not access camera/microphone');
+      this.showError('Could not access camera');
     }
   }
 
@@ -385,17 +381,6 @@ class SyncApp {
     const localVideo = document.getElementById('local-video') as HTMLVideoElement | null;
     if (localVideo) localVideo.srcObject = null;
     (document.getElementById('stop-camera-btn') as HTMLButtonElement)?.setAttribute('disabled', 'true');
-    (document.getElementById('toggle-mic-btn') as HTMLButtonElement)?.setAttribute('disabled', 'true');
-  }
-
-  private toggleMic() {
-    if (!this.localStream) return;
-    const audioTrack = this.localStream.getAudioTracks()[0];
-    if (!audioTrack) return;
-    this.micMuted = !this.micMuted;
-    audioTrack.enabled = !this.micMuted;
-    const btn = document.getElementById('toggle-mic-btn') as HTMLButtonElement | null;
-    if (btn) btn.textContent = this.micMuted ? 'Unmute Mic' : 'Mute Mic';
   }
 
   private async startScreenShare() {
@@ -451,35 +436,20 @@ class SyncApp {
     try {
       if (this.isSharingAudio) return;
       
-      this.logToUI('🎵 Starting audio sharing...');
+      this.logToUI('🎵 Starting system audio sharing...');
+      this.logToUI('📺 Requesting screen sharing for audio capture...');
       
-      // Try to get microphone audio first (no screen sharing required)
-      let stream: MediaStream;
-      try {
-        this.logToUI('📱 Requesting microphone access...');
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-            sampleRate: 44100
-          }
-        });
-        this.logToUI('✅ Microphone access granted');
-      } catch (micError) {
-        this.logToUI('⚠️ Microphone access denied, trying system audio...');
-        // Fallback to system audio (requires screen sharing)
-        stream = await navigator.mediaDevices.getDisplayMedia({ 
-          video: false, 
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false
-          }
-        });
-        this.logToUI('✅ System audio access granted');
-      }
+      // Get system audio (requires screen sharing for audio capture)
+      const stream = await navigator.mediaDevices.getDisplayMedia({ 
+        video: false, 
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        }
+      });
       
+      this.logToUI('✅ System audio access granted');
       this.audioStream = stream;
       this.isSharingAudio = true;
       
@@ -489,19 +459,19 @@ class SyncApp {
       // Add audio track to peer connection
       const audioTrack = stream.getAudioTracks()[0];
       if (audioTrack) {
-        this.logToUI(`📡 Adding audio track: ${audioTrack.label}`);
+        this.logToUI(`📡 Adding system audio track: ${audioTrack.label}`);
         const dummyStream = new MediaStream([audioTrack]);
         this.peerConnection!.addTrack(audioTrack, dummyStream);
-        this.logToUI('✅ Audio track added to peer connection');
+        this.logToUI('✅ System audio track added to peer connection');
       } else {
         this.logToUI('❌ No audio track found in stream');
-        throw new Error('No audio track available');
+        throw new Error('No system audio track available');
       }
       
       // Handle when user stops sharing
       stream.getTracks().forEach(track => {
         track.onended = () => {
-          this.logToUI('🛑 Audio track ended by user');
+          this.logToUI('🛑 System audio track ended by user');
           this.stopAudioSharing();
         };
       });
@@ -510,13 +480,13 @@ class SyncApp {
       (document.getElementById('start-audio-btn') as HTMLButtonElement)?.setAttribute('disabled', 'true');
       (document.getElementById('stop-audio-btn') as HTMLButtonElement)?.removeAttribute('disabled');
       
-      this.showStatus('🎵 Audio sharing started');
-      this.logToUI('🎵 Audio sharing started successfully!');
-      console.log('🎵 Audio sharing started');
+      this.showStatus('🎵 System audio sharing started');
+      this.logToUI('🎵 System audio sharing started successfully!');
+      console.log('🎵 System audio sharing started');
     } catch (err) {
-      console.error('Failed to start audio sharing:', err);
-      this.logToUI(`❌ Audio sharing failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      this.showError(`Could not start audio sharing: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      console.error('Failed to start system audio sharing:', err);
+      this.logToUI(`❌ System audio sharing failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      this.showError(`Could not start system audio sharing: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   }
 
