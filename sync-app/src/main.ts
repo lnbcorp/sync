@@ -304,10 +304,17 @@ class SyncApp {
     this.logToUI('🔧 Creating new peer connection...');
     const pc = new RTCPeerConnection({
       iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:global.stun.twilio.com:3478?transport=udp' }
+        { urls: [
+          'stun:stun.l.google.com:19302',
+          'stun:stun1.l.google.com:19302',
+          'stun:stun2.l.google.com:19302',
+          'stun:stun3.l.google.com:19302',
+          'stun:stun4.l.google.com:19302',
+          'stun:stun.stunprotocol.org:3478'
+        ] }
       ]
     });
+    this.logToUI('🧊 ICE servers configured: Google STUN + stunprotocol');
     this.peerConnection = pc;
     this.logToUI('✅ Peer connection created');
 
