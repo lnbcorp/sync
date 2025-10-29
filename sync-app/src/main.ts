@@ -7,6 +7,7 @@ class SyncApp {
 
   constructor() {
     this.initializeEventListeners();
+    this.startKeepAlive();
   }
 
   private initializeEventListeners() {
@@ -237,6 +238,21 @@ class SyncApp {
       createBtn.disabled = true;
       joinBtn.disabled = true;
     }
+  }
+
+  private startKeepAlive() {
+    // Ping the backend every 5 minutes to keep it awake
+    setInterval(async () => {
+      try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 
+          (import.meta.env.DEV ? 'http://localhost:3000' : 'https://sync-up-nsnr.onrender.com');
+        
+        await fetch(`${backendUrl}/ping`);
+        console.log('🔄 Keep-alive ping sent');
+      } catch (error) {
+        console.log('⚠️ Keep-alive ping failed:', error);
+      }
+    }, 5 * 60 * 1000); // 5 minutes
   }
 }
 

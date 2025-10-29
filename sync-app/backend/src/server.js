@@ -20,6 +20,7 @@ app.use(express.json());
 const redis = createRedisClient(REDIS_URL);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
+app.get('/ping', (req, res) => res.json({ pong: Date.now() }));
 app.use('/api/session', createSessionRouter({ redis, ttlSeconds: SESSION_TTL_SECONDS }));
 
 const server = http.createServer(app);
